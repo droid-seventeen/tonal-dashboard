@@ -1,17 +1,10 @@
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { parseMembersFromEnv } from "@/lib/members";
-import { sessionCookieName, verifySessionCookieValue } from "@/lib/session";
 import { getFamilyDashboard } from "@/lib/tonal";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const cookieStore = await cookies();
-  if (!verifySessionCookieValue(cookieStore.get(sessionCookieName())?.value)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   let members;
   try {
     members = parseMembersFromEnv();

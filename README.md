@@ -1,6 +1,6 @@
 # Tonal Dashboard
 
-A private, Vercel-friendly dashboard for multiple Tonal family members.
+A public, Vercel-friendly dashboard for multiple Tonal family members.
 
 It shows:
 
@@ -34,8 +34,6 @@ npm run auth:token -- member@example.com
 Put those refresh tokens into `.env.local`:
 
 ```bash
-DASHBOARD_PASSWORD="shared-family-password"
-SESSION_SECRET="$(openssl rand -hex 32)"
 TONAL_MEMBERS_JSON='[
   {"id":"you","name":"You","refreshToken":"v1..."},
   {"id":"partner","name":"Partner","refreshToken":"v1..."}
@@ -67,17 +65,15 @@ Recommended simple path:
 1. Push this repo to GitHub.
 2. Create a new Vercel project from that GitHub repo.
 3. Add these Vercel environment variables:
-   - `DASHBOARD_PASSWORD`
-   - `SESSION_SECRET`
    - `TONAL_MEMBERS_JSON`
 4. Deploy.
-5. Share the Vercel URL and dashboard password with family/friends.
+5. Share the Vercel URL with family/friends.
 
 No database is required.
 
 ## Security model
 
-- Browser users authenticate with one shared `DASHBOARD_PASSWORD`.
+- The dashboard itself is intentionally public; anyone with the URL can view the summarized family stats.
 - Tonal refresh tokens are stored only in server-side environment variables.
 - API responses sent to the browser are dashboard summaries, not the raw token bundle.
 - Prefer refresh tokens over storing Tonal account passwords in Vercel.

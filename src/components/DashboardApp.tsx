@@ -5,16 +5,13 @@ import {
   CalendarDays,
   ChevronRight,
   Dumbbell,
-  Lock,
-  LogOut,
   Medal,
   RefreshCw,
-  ShieldCheck,
   Trophy,
   Users,
   Zap
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { formatDuration, formatNumber, rankMembersByAllTimeVolume } from "@/lib/metrics";
 import type { TonalDashboard } from "@/lib/tonal";
 
@@ -27,30 +24,28 @@ type ApiPayload = {
 
 type View = "leaderboard" | "detail";
 
-export default function DashboardApp({ initialAuthed, passwordEnabled }: { initialAuthed: boolean; passwordEnabled: boolean }) {
-  const [authed, setAuthed] = useState(initialAuthed);
+export default function DashboardApp() {
   const [payload, setPayload] = useState<ApiPayload | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [view, setView] = useState<View>("leaderboard");
   const [loading, setLoading] = useState(false);
-  const [loginError, setLoginError] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
-    const response = await fetch("/api/dashboard", { cache: "no-store" });
-    if (response.status === 401) {
-      setAuthed(false);
+    try {
+      const response = await fetch("/api/dashboard", { cache: "no-store" });
+      const next = (await response.json().catch(() => ({ error: `Dashboard request failed (${response.status}).` }))) as ApiPayload;
+      setPayload(response.ok ? next : { error: next.error ?? `Dashboard request failed (${response.status}).` });
+    } catch (error) {
+      setPayload({ error: (error as Error).message });
+    } finally {
       setLoading(false);
-      return;
     }
-    const next = (await response.json()) as ApiPayload;
-    setPayload(next);
-    setLoading(false);
   }
 
   useEffect(() => {
-    if (authed) void load();
-  }, [authed]);
+    void load();
+  }, []);
 
   useEffect(() => {
     function syncFromHash() {
@@ -74,31 +69,6 @@ export default function DashboardApp({ initialAuthed, passwordEnabled }: { initi
     [leaderboard, selected]
   );
 
-  async function login(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setLoginError(null);
-    const form = new FormData(event.currentTarget);
-    const response = await fetch("/api/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: form.get("password") })
-    });
-    if (!response.ok) {
-      const body = (await response.json().catch(() => ({}))) as { error?: string };
-      setLoginError(body.error ?? "Login failed.");
-      return;
-    }
-    setAuthed(true);
-  }
-
-  async function logout() {
-    await fetch("/api/logout", { method: "POST" });
-    setAuthed(false);
-    setPayload(null);
-    setSelected(null);
-    setView("leaderboard");
-  }
-
   function navigateToLeaderboard() {
     setView("leaderboard");
     setSelected(null);
@@ -109,10 +79,6 @@ export default function DashboardApp({ initialAuthed, passwordEnabled }: { initi
     setSelected(memberId);
     setView("detail");
     window.history.pushState(null, "", `#member-${encodeURIComponent(memberId)}`);
-  }
-
-  if (!authed) {
-    return <LoginScreen passwordEnabled={passwordEnabled} loginError={loginError} onSubmit={login} />;
   }
 
   return (
@@ -131,9 +97,6 @@ export default function DashboardApp({ initialAuthed, passwordEnabled }: { initi
           <div className="topbar-actions">
             <button className="ghost-button" onClick={load} disabled={loading} type="button">
               <RefreshCw className={loading ? "spin" : ""} size={15} /> Refresh
-            </button>
-            <button className="ghost-button" onClick={logout} type="button">
-              <LogOut size={15} /> Logout
             </button>
           </div>
         </header>
@@ -323,22 +286,6 @@ function MemberDashboard({ data, onBack }: { data: TonalDashboard & { rank: numb
         </div>
       </section>
     </section>
-  );
-}
-
-function LoginScreen({ passwordEnabled, loginError, onSubmit }: { passwordEnabled: boolean; loginError: string | null; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
-  return (
-    <main className="login-shell">
-      <form className="login-card" onSubmit={onSubmit}>
-        <div className="brand-mark login-mark"><Lock size={20} /></div>
-        <div className="eyebrow">Private league</div>
-        <h1>Tonal League</h1>
-        <p>Enter the shared dashboard password to view family standings and training detail.</p>
-        <input name="password" placeholder={passwordEnabled ? "Dashboard password" : "No password configured locally"} type="password" />
-        {loginError ? <p className="form-error">{loginError}</p> : null}
-        <button className="primary-button" type="submit"><ShieldCheck size={16} /> Enter leaderboard</button>
-      </form>
-    </main>
   );
 }
 
