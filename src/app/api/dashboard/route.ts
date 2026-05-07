@@ -1,0 +1,48 @@
+import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
+import { parseMembersFromEnv } from "@/lib/members";
+import { sessionCookieName, verifySessionCookieValue } from "@/lib/session";
+import { getFamilyDashboard } from "@/lib/tonal";
+
+export const dynamic = "force-dynamic";
+
+export async function GET() {
+  const cookieStore = await cookies();
+  if (!verifySessionCookieValue(cookieStore.get(sessionCookieName())?.value)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  let members;
+  try {
+    members = parseMembersFromEnv();
+  } catch (error) {
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
+  }
+
+  if (!members.length) {
+    return NextResponse.json({
+      configured: false,
+      message: "Set TONAL_MEMBERS_JSON to load real family dashboard data.",
+      members: []
+    });
+  }
+
+  const settled = await Promise.allSettled(members.map((member) => getFamilyDashboard(member)));
+  return NextResponse.json({
+    configured: true,
+    members: settled.map((result, index) =>
+      result.status === "fulfilled"
+        ? result.value
+        : {
+            member: { id: members[index].id, name: members[index].name },
+            fetchedAt: new Date().toISOString(),
+            strength: {},
+            readiness: {},
+            topReady: [],
+            activities: [],
+            weeklyVolume: [],
+            errors: [(result.reason as Error).message]
+          }
+    )
+  });
+}

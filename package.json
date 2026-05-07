@@ -1,0 +1,40 @@
+{
+  "name": "tonal-family-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "portless",
+    "dev:app": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "auth:token": "tsx scripts/tonal-auth-token.ts"
+  },
+  "dependencies": {
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "lucide-react": "latest",
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "tailwindcss": "^4.2.4",
+    "typescript": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "latest",
+    "jsdom": "latest",
+    "tsx": "latest",
+    "vitest": "latest"
+  },
+  "portless": {
+    "name": "tonal-family",
+    "script": "dev:app"
+  },
+  "overrides": {
+    "postcss": "^8.5.14"
+  }
+}
