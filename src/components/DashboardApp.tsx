@@ -52,6 +52,22 @@ export default function DashboardApp({ initialAuthed, passwordEnabled }: { initi
     if (authed) void load();
   }, [authed]);
 
+  useEffect(() => {
+    function syncFromHash() {
+      const memberId = decodeURIComponent(window.location.hash.replace(/^#member-/, ""));
+      if (memberId && window.location.hash.startsWith("#member-")) {
+        setSelected(memberId);
+        setView("detail");
+      } else {
+        setView("leaderboard");
+      }
+    }
+
+    syncFromHash();
+    window.addEventListener("hashchange", syncFromHash);
+    return () => window.removeEventListener("hashchange", syncFromHash);
+  }, []);
+
   const leaderboard = useMemo(() => rankMembersByAllTimeVolume(payload?.members ?? []), [payload?.members]);
   const selectedMember = useMemo(
     () => leaderboard.find((candidate) => candidate.member.id === selected) ?? leaderboard[0],
@@ -83,9 +99,16 @@ export default function DashboardApp({ initialAuthed, passwordEnabled }: { initi
     setView("leaderboard");
   }
 
+  function navigateToLeaderboard() {
+    setView("leaderboard");
+    setSelected(null);
+    if (window.location.hash) window.history.pushState(null, "", window.location.pathname);
+  }
+
   function openDetail(memberId: string) {
     setSelected(memberId);
     setView("detail");
+    window.history.pushState(null, "", `#member-${encodeURIComponent(memberId)}`);
   }
 
   if (!authed) {
@@ -98,13 +121,13 @@ export default function DashboardApp({ initialAuthed, passwordEnabled }: { initi
       <div className="ambient ambient-two" />
       <section className="dashboard-frame">
         <header className="topbar">
-          <button className="brand-lockup" onClick={() => setView("leaderboard")} type="button">
+          <a className="brand-lockup" href="#" onClick={(event) => { event.preventDefault(); navigateToLeaderboard(); }}>
             <span className="brand-mark"><Trophy size={18} /></span>
             <span>
               <span className="brand-title">Tonal League</span>
               <span className="brand-subtitle">Family volume board</span>
             </span>
-          </button>
+          </a>
           <div className="topbar-actions">
             <button className="ghost-button" onClick={load} disabled={loading} type="button">
               <RefreshCw className={loading ? "spin" : ""} size={15} /> Refresh
@@ -178,7 +201,7 @@ function LeaderboardView({
 
         <div className="leader-list">
           {leaderboard.map((member) => (
-            <button className="leader-row" key={member.member.id} onClick={() => onOpenMember(member.member.id)} type="button">
+            <a className="leader-row" href={`#member-${encodeURIComponent(member.member.id)}`} key={member.member.id} onClick={() => onOpenMember(member.member.id)}>
               <span className="leader-rank">#{member.rank}</span>
               <span className="leader-avatar">{initials(member.member.name)}</span>
               <span className="leader-main">
@@ -190,7 +213,7 @@ function LeaderboardView({
                 <span>lb all-time</span>
               </span>
               <ChevronRight className="leader-chevron" size={18} />
-            </button>
+            </a>
           ))}
           {!leaderboard.length ? <Empty text="No members configured yet. Add TONAL_MEMBERS_JSON entries to populate the league." /> : null}
         </div>
@@ -204,7 +227,7 @@ function MemberDashboard({ data, onBack }: { data: TonalDashboard & { rank: numb
   const recentActivities = data.activities.slice(0, 8);
   return (
     <section className="detail-page">
-      <button className="back-button" onClick={onBack} type="button"><ArrowLeft size={16} /> Back to leaderboard</button>
+      <a className="back-button" href="#" onClick={(event) => { event.preventDefault(); onBack(); }}><ArrowLeft size={16} /> Back to leaderboard</a>
       {data.errors.length ? <Notice tone="error">{data.errors.join(" • ")}</Notice> : null}
 
       <div className="athlete-hero">
@@ -278,6 +301,15 @@ function MemberDashboard({ data, onBack }: { data: TonalDashboard & { rank: numb
       <section className="panel workouts-panel">
         <div className="panel-heading"><h2>Recent workouts</h2><span>Latest 8</span></div>
         <div className="workout-list">
+          {recentActivities.length ? (
+            <div className="workout-row workout-header">
+              <span>Date</span>
+              <span>Workout</span>
+              <span>Type</span>
+              <span>Duration</span>
+              <span>Volume</span>
+            </div>
+          ) : null}
           {recentActivities.map((activity) => (
             <div className="workout-row" key={activity.activityId ?? activity.activityTime}>
               <span className="workout-date">{activity.activityTime ? formatDate(activity.activityTime) : "—"}</span>

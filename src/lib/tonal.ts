@@ -81,6 +81,10 @@ export async function getFamilyDashboard(member: TonalMember): Promise<TonalDash
 
   const activities = Array.isArray(activitiesRaw) ? activitiesRaw : [];
   const workoutActivities = Array.isArray(workoutActivitiesRaw) ? workoutActivitiesRaw : [];
+  const workoutActivitySummaries = workoutActivities
+    .map(workoutActivityToActivity)
+    .sort((a, b) => new Date(b.activityTime ?? 0).getTime() - new Date(a.activityTime ?? 0).getTime());
+  const displayActivities = activities.length ? activities : workoutActivitySummaries.slice(0, 20);
   const readiness = readinessRaw && !Array.isArray(readinessRaw) ? readinessRaw : {};
 
   return {
@@ -91,9 +95,24 @@ export async function getFamilyDashboard(member: TonalMember): Promise<TonalDash
     readiness,
     topReady: topReadyMuscles(readiness),
     allTime: summarizeAllTimeStats(workoutActivities),
-    activities,
-    weeklyVolume: groupActivitiesByWeek(activities),
+    activities: displayActivities,
+    weeklyVolume: groupActivitiesByWeek(workoutActivitySummaries.length ? workoutActivitySummaries : displayActivities),
     errors
+  };
+}
+
+function workoutActivityToActivity(workout: TonalWorkoutActivity): TonalActivity {
+  return {
+    activityId: workout.id ?? workout.workoutActivityID,
+    activityTime: workout.beginTime,
+    activityType: workout.workoutType,
+    workoutPreview: {
+      workoutTitle: workout.workoutTitle ?? workout.workoutType,
+      targetArea: workout.targetArea ?? workout.workoutType,
+      totalDuration: workout.totalDuration ?? workout.activeDuration,
+      totalVolume: workout.totalVolume,
+      totalWork: workout.totalWork
+    }
   };
 }
 
