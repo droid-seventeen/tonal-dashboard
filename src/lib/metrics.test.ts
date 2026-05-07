@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { groupActivitiesByWeek, normalizeStrengthScores, topReadyMuscles } from "./metrics";
+import {
+  groupActivitiesByWeek,
+  normalizeStrengthScores,
+  rankMembersByAllTimeVolume,
+  summarizeAllTimeStats,
+  topReadyMuscles
+} from "./metrics";
 
 describe("dashboard metrics", () => {
   it("normalizes Tonal strength scores including the overall blank region", () => {
@@ -31,5 +37,32 @@ describe("dashboard metrics", () => {
       { week: "2026-W19", workouts: 2, volume: 3000 },
       { week: "2026-W20", workouts: 1, volume: 500 }
     ]);
+  });
+
+  it("summarizes all-time leaderboard stats from workout activities", () => {
+    expect(
+      summarizeAllTimeStats([
+        { beginTime: "2026-01-01T10:00:00Z", totalVolume: 1000, totalReps: 40, totalDuration: 1800 },
+        { beginTime: "2026-02-01T10:00:00Z", totalVolume: 2500, totalReps: 80, totalDuration: 2400 }
+      ])
+    ).toEqual({
+      totalVolume: 3500,
+      totalWorkouts: 2,
+      totalReps: 120,
+      totalDuration: 4200,
+      firstWorkoutAt: "2026-01-01T10:00:00Z",
+      lastWorkoutAt: "2026-02-01T10:00:00Z"
+    });
+  });
+
+  it("ranks family members by all-time volume", () => {
+    const ranked = rankMembersByAllTimeVolume([
+      { member: { id: "a", name: "A" }, allTime: { totalVolume: 100 } },
+      { member: { id: "b", name: "B" }, allTime: { totalVolume: 400 } },
+      { member: { id: "c", name: "C" }, allTime: { totalVolume: 250 } }
+    ]);
+
+    expect(ranked.map((entry) => entry.member.id)).toEqual(["b", "c", "a"]);
+    expect(ranked.map((entry) => entry.rank)).toEqual([1, 2, 3]);
   });
 });

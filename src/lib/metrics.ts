@@ -18,6 +18,28 @@ export type ActivityInput = {
   } | null;
 };
 
+export type WorkoutActivityInput = {
+  beginTime?: string | null;
+  endTime?: string | null;
+  totalVolume?: number | null;
+  totalReps?: number | null;
+  totalDuration?: number | null;
+  activeDuration?: number | null;
+};
+
+export type AllTimeStats = {
+  totalVolume: number;
+  totalWorkouts: number;
+  totalReps: number;
+  totalDuration: number;
+  firstWorkoutAt?: string;
+  lastWorkoutAt?: string;
+};
+
+export type LeaderboardEntry<T extends { member: { id: string; name: string }; allTime: { totalVolume: number } }> = T & {
+  rank: number;
+};
+
 export type WeeklyVolume = {
   week: string;
   workouts: number;
@@ -61,6 +83,29 @@ export function groupActivitiesByWeek(activities: ActivityInput[]): WeeklyVolume
   }
 
   return [...byWeek.values()].sort((a, b) => a.week.localeCompare(b.week));
+}
+
+export function summarizeAllTimeStats(workouts: WorkoutActivityInput[]): AllTimeStats {
+  const datedWorkouts = workouts
+    .filter((workout) => workout.beginTime && !Number.isNaN(new Date(workout.beginTime).getTime()))
+    .sort((a, b) => new Date(a.beginTime ?? 0).getTime() - new Date(b.beginTime ?? 0).getTime());
+
+  return {
+    totalVolume: workouts.reduce((sum, workout) => sum + Math.round(workout.totalVolume ?? 0), 0),
+    totalWorkouts: workouts.length,
+    totalReps: workouts.reduce((sum, workout) => sum + Math.round(workout.totalReps ?? 0), 0),
+    totalDuration: workouts.reduce((sum, workout) => sum + Math.round(workout.totalDuration ?? workout.activeDuration ?? 0), 0),
+    firstWorkoutAt: datedWorkouts[0]?.beginTime ?? undefined,
+    lastWorkoutAt: datedWorkouts.at(-1)?.beginTime ?? undefined
+  };
+}
+
+export function rankMembersByAllTimeVolume<T extends { member: { id: string; name: string }; allTime: { totalVolume: number } }>(
+  members: T[]
+): LeaderboardEntry<T>[] {
+  return [...members]
+    .sort((a, b) => b.allTime.totalVolume - a.allTime.totalVolume || a.member.name.localeCompare(b.member.name))
+    .map((member, index) => ({ ...member, rank: index + 1 }));
 }
 
 export function isoWeekKey(input: Date): string {

@@ -1,4 +1,4 @@
-# Tonal Family Dashboard
+# Tonal Dashboard
 
 A private, Vercel-friendly dashboard for multiple Tonal family members.
 
@@ -51,13 +51,13 @@ npm run dev
 With portless, the local URL is:
 
 ```text
-http://tonal-family.localhost:1355
+http://tonal-dashboard.localhost:1355
 ```
 
 If your local portless proxy is running HTTPS on 443 instead, use:
 
 ```text
-https://tonal-family.localhost
+https://tonal-dashboard.localhost
 ```
 
 ## Remote hosting on Vercel

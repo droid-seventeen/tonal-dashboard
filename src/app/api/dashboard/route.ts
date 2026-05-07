@@ -39,6 +39,7 @@ export async function GET() {
             strength: {},
             readiness: {},
             topReady: [],
+            allTime: { totalVolume: 0, totalWorkouts: 0, totalReps: 0, totalDuration: 0 },
             activities: [],
             weeklyVolume: [],
             errors: [(result.reason as Error).message]

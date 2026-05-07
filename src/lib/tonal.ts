@@ -1,5 +1,5 @@
 import { TonalMember } from "./members";
-import { groupActivitiesByWeek, normalizeStrengthScores, topReadyMuscles } from "./metrics";
+import { AllTimeStats, groupActivitiesByWeek, normalizeStrengthScores, summarizeAllTimeStats, topReadyMuscles } from "./metrics";
 
 const AUTH0_CLIENT_ID = "ERCyexW-xoVG_Yy3RDe-eV4xsOnRHP6L";
 const AUTH0_TOKEN_URL = "https://tonal.auth0.com/oauth/token";
@@ -19,6 +19,7 @@ export type TonalDashboard = {
   strength: ReturnType<typeof normalizeStrengthScores>;
   readiness: Record<string, number>;
   topReady: [string, number][];
+  allTime: AllTimeStats;
   activities: TonalActivity[];
   weeklyVolume: ReturnType<typeof groupActivitiesByWeek>;
   errors: string[];
@@ -40,6 +41,22 @@ export type TonalActivity = {
   };
 };
 
+export type TonalWorkoutActivity = {
+  id?: string;
+  workoutActivityID?: string;
+  workoutId?: string;
+  workoutTitle?: string;
+  workoutType?: string;
+  beginTime?: string;
+  endTime?: string;
+  targetArea?: string;
+  totalDuration?: number;
+  activeDuration?: number;
+  totalVolume?: number;
+  totalReps?: number;
+  totalWork?: number;
+};
+
 type UserInfo = { id?: string; sub?: string; userId?: string };
 
 const tokenCache = new Map<string, { token: string; expiresAt: number; refreshToken?: string }>();
@@ -52,14 +69,18 @@ export async function getFamilyDashboard(member: TonalMember): Promise<TonalDash
   const userId = userInfo.id ?? userInfo.userId ?? userInfo.sub;
   if (!userId) throw new Error("Tonal userinfo response did not include a user id.");
 
-  const [profile, strengthRaw, readinessRaw, activitiesRaw] = await Promise.all([
+  const [profile, strengthRaw, readinessRaw, activitiesRaw, workoutActivitiesRaw] = await Promise.all([
     client.get<Record<string, unknown>>(`/v6/users/${userId}`).catch((error) => noteError(errors, "profile", error)),
     client.get<unknown[]>(`/v6/users/${userId}/strength-scores/current`).catch((error) => noteError(errors, "strength", error)),
     client.get<Record<string, number>>(`/v6/users/${userId}/muscle-readiness/current`).catch((error) => noteError(errors, "readiness", error)),
-    client.get<TonalActivity[]>(`/v6/users/${userId}/activities?limit=20`).catch((error) => noteError(errors, "activities", error))
+    client.get<TonalActivity[]>(`/v6/users/${userId}/activities?limit=20`).catch((error) => noteError(errors, "activities", error)),
+    client.getPaginated<TonalWorkoutActivity>(`/v6/users/${userId}/workout-activities`).catch((error) =>
+      noteError(errors, "all-time workouts", error)
+    )
   ]);
 
   const activities = Array.isArray(activitiesRaw) ? activitiesRaw : [];
+  const workoutActivities = Array.isArray(workoutActivitiesRaw) ? workoutActivitiesRaw : [];
   const readiness = readinessRaw && !Array.isArray(readinessRaw) ? readinessRaw : {};
 
   return {
@@ -69,6 +90,7 @@ export async function getFamilyDashboard(member: TonalMember): Promise<TonalDash
     strength: normalizeStrengthScores(Array.isArray(strengthRaw) ? (strengthRaw as never[]) : []),
     readiness,
     topReady: topReadyMuscles(readiness),
+    allTime: summarizeAllTimeStats(workoutActivities),
     activities,
     weeklyVolume: groupActivitiesByWeek(activities),
     errors
@@ -99,16 +121,46 @@ class TonalClient {
     return new TonalClient(member, token);
   }
 
-  async get<T>(path: string): Promise<T> {
+  async get<T>(path: string, extraHeaders: Record<string, string> = {}): Promise<T> {
+    const response = await this.request(path, extraHeaders);
+    return (await response.json()) as T;
+  }
+
+  async getPaginated<T>(path: string, limit = 100): Promise<T[]> {
+    const items: T[] = [];
+    let offset = 0;
+    let total: number | undefined;
+
+    while (total === undefined || offset < total) {
+      const response = await this.request(path, {
+        "pg-offset": String(offset),
+        "pg-limit": String(limit)
+      });
+      const batch = (await response.json()) as T[];
+      if (!Array.isArray(batch)) throw new Error(`Expected paginated Tonal response for ${path} to be an array.`);
+
+      items.push(...batch);
+      const headerTotal = Number(response.headers.get("pg-total"));
+      total = Number.isFinite(headerTotal) && headerTotal >= 0 ? headerTotal : offset + batch.length;
+      offset += limit;
+
+      if (batch.length === 0 || batch.length < limit) break;
+    }
+
+    return items;
+  }
+
+  private async request(path: string, extraHeaders: Record<string, string> = {}, retried = false): Promise<Response> {
     const response = await fetch(`${TONAL_API_BASE}${path}`, {
       headers: {
         Authorization: `Bearer ${this.token}`,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        ...extraHeaders
       },
       cache: "no-store"
     });
 
-    if (response.status === 401) {
+    if (response.status === 401 && !retried) {
       const cached = tokenCache.get(this.member.id);
       const refresh = cached?.refreshToken ?? this.member.refreshToken;
       if (refresh) {
@@ -119,7 +171,7 @@ class TonalClient {
           expiresAt: Date.now() + Math.max(60, (bundle.expires_in ?? 36000) - 60) * 1000,
           refreshToken: bundle.refresh_token ?? refresh
         });
-        return this.get<T>(path);
+        return this.request(path, extraHeaders, true);
       }
     }
 
@@ -128,7 +180,7 @@ class TonalClient {
       throw new Error(`Tonal API ${response.status} ${response.statusText}${body ? `: ${body.slice(0, 200)}` : ""}`);
     }
 
-    return (await response.json()) as T;
+    return response;
   }
 }
 

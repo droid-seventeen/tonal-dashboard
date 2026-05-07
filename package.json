@@ -1,5 +1,5 @@
 {
-  "name": "tonal-family-dashboard",
+  "name": "tonal-dashboard",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -31,7 +31,7 @@
     "vitest": "latest"
   },
   "portless": {
-    "name": "tonal-family",
+    "name": "tonal-dashboard",
     "script": "dev:app"
   },
   "overrides": {

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Tonal Family Dashboard",
+  title: "Tonal Dashboard",
   description: "Private Tonal strength, readiness, and workout dashboard for family sharing."
 };
 
