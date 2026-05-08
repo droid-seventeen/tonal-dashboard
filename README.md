@@ -40,6 +40,13 @@ TONAL_MEMBERS_JSON='[
 ]'
 ```
 
+Optional avatar uploads use Vercel Blob and a separate upload code:
+
+```bash
+BLOB_READ_WRITE_TOKEN="vercel-blob-read-write-token"
+AVATAR_ADMIN_TOKEN="choose-a-private-upload-code"
+```
+
 Then run locally:
 
 ```bash
@@ -66,15 +73,31 @@ Recommended simple path:
 2. Create a new Vercel project from that GitHub repo.
 3. Add these Vercel environment variables:
    - `TONAL_MEMBERS_JSON`
+   - `BLOB_READ_WRITE_TOKEN` if member avatars should persist in Vercel Blob
+   - `AVATAR_ADMIN_TOKEN` if avatar uploads should be enabled
 4. Deploy.
 5. Share the Vercel URL with family/friends.
 
 No database is required.
 
+## Member avatars
+
+The public dashboard also requests `/api/avatars`. If Blob is not configured, that endpoint returns an empty avatar map and the dashboard falls back to initials.
+
+To upload avatars, open the dashboard with the hidden hash route:
+
+```text
+https://your-dashboard.example/#minda
+```
+
+Enter the `AVATAR_ADMIN_TOKEN`, choose a configured Tonal member, and upload a jpeg, png, webp, or gif under 1 MB. SVG files are rejected. Uploaded images are public because they render on the public dashboard.
+
 ## Security model
 
 - The dashboard itself is intentionally public; anyone with the URL can view the summarized family stats.
 - Tonal refresh tokens are stored only in server-side environment variables.
+- Avatar upload auth uses only the server-side `AVATAR_ADMIN_TOKEN`; the normal dashboard does not expose the upload panel unless the client hash is `#minda`.
+- Uploaded avatar images are public Vercel Blob URLs.
 - API responses sent to the browser are dashboard summaries, not the raw token bundle.
 - Prefer refresh tokens over storing Tonal account passwords in Vercel.
 
@@ -93,6 +116,7 @@ npm run auth:token -- email  # securely prompt, then print Tonal refresh token
 This repo currently verifies:
 
 - Unit tests for member env parsing and metrics aggregation
+- API and UI tests for avatar listing, upload validation, and the hidden admin panel
 - TypeScript strict typecheck
 - Next.js production build
 - Local portless route smoke test

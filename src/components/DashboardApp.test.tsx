@@ -27,6 +27,7 @@ describe("DashboardApp", () => {
   afterEach(() => {
     act(() => root.unmount());
     container.remove();
+    window.sessionStorage.clear();
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -41,7 +42,9 @@ describe("DashboardApp", () => {
     });
 
     expect(fetch).toHaveBeenCalledWith("/api/dashboard");
+    expect(fetch).toHaveBeenCalledWith("/api/avatars");
     expect(container.querySelector('input[type="password"]')).toBeNull();
+    expect(container.textContent).not.toContain("Avatar admin");
     expect(container.textContent).toContain("Tonal League");
     expect(container.textContent).toContain("All-time leaderboard");
     expect(container.textContent).toContain("No family members configured yet");
@@ -50,6 +53,122 @@ describe("DashboardApp", () => {
     const visibleButtons = Array.from(container.querySelectorAll("button")).map((button) => button.textContent);
     expect(visibleButtons).not.toContain("Refresh");
     expect(container.textContent).not.toContain("Logout");
+  });
+
+  it("renders uploaded avatar images while keeping initials fallback", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "/api/avatars") {
+          return jsonResponse({ configured: true, avatars: { taylor: "https://blob.example/taylor.png" } });
+        }
+        return jsonResponse({
+          configured: true,
+          members: [
+            dashboardMember("taylor", "Taylor", { totalVolume: 250000, totalWorkouts: 20 }),
+            dashboardMember("casey", "Casey", { totalVolume: 125000, totalWorkouts: 12 })
+          ]
+        });
+      })
+    );
+
+    await act(async () => {
+      root.render(<DashboardApp />);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const taylorAvatar = container.querySelector('[data-member-avatar="taylor"] img');
+    const caseyAvatar = container.querySelector('[data-member-avatar="casey"]');
+    expect(taylorAvatar?.getAttribute("src")).toBe("https://blob.example/taylor.png");
+    expect(taylorAvatar?.getAttribute("alt")).toBe("Taylor avatar");
+    expect(caseyAvatar?.textContent).toContain("C");
+
+    const taylorRow = Array.from(container.querySelectorAll(".leader-row")).find((row) => row.textContent?.includes("Taylor"));
+    await act(async () => {
+      taylorRow?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+
+    expect(container.querySelector('.athlete-hero [data-member-avatar="taylor"] img')?.getAttribute("src")).toBe("https://blob.example/taylor.png");
+  });
+
+  it("only reveals avatar uploads behind the minda hash", async () => {
+    await act(async () => {
+      root.render(<DashboardApp />);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).not.toContain("Avatar admin");
+
+    window.history.replaceState(null, "", "/#minda");
+    await act(async () => {
+      window.dispatchEvent(new Event("hashchange"));
+    });
+
+    expect(container.textContent).toContain("Avatar admin");
+    expect(container.querySelector('input[name="avatarAdminToken"]')).not.toBeNull();
+    expect(container.querySelector('select[name="avatarMemberId"]')).not.toBeNull();
+    expect(container.querySelector('input[name="avatarFile"]')).not.toBeNull();
+  });
+
+  it("uploads an avatar from the hidden admin panel and updates the dashboard immediately", async () => {
+    window.history.replaceState(null, "", "/#minda");
+    const uploadUrl = "https://blob.example/avatars/casey.png";
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/avatars") return jsonResponse({ configured: true, avatars: {} });
+      if (url === "/api/admin/avatars") {
+        expect(init?.method).toBe("POST");
+        expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer admin-token");
+        expect(init?.body).toBeInstanceOf(FormData);
+        return jsonResponse({ memberId: "casey", url: uploadUrl });
+      }
+      return jsonResponse({
+        configured: true,
+        members: [
+          dashboardMember("taylor", "Taylor", { totalVolume: 250000, totalWorkouts: 20 }),
+          dashboardMember("casey", "Casey", { totalVolume: 125000, totalWorkouts: 12 })
+        ]
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await act(async () => {
+      root.render(<DashboardApp />);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const tokenInput = container.querySelector('input[name="avatarAdminToken"]') as HTMLInputElement;
+    const memberSelect = container.querySelector('select[name="avatarMemberId"]') as HTMLSelectElement;
+    const fileInput = container.querySelector('input[name="avatarFile"]') as HTMLInputElement;
+    await act(async () => {
+      setFormValue(tokenInput, "admin-token");
+      setFormValue(memberSelect, "casey");
+      Object.defineProperty(fileInput, "files", {
+        configurable: true,
+        value: [new File(["avatar"], "casey.png", { type: "image/png" })]
+      });
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    const form = container.querySelector(".avatar-admin-form");
+    await act(async () => {
+      form?.dispatchEvent(new SubmitEvent("submit", { bubbles: true, cancelable: true }));
+      await flushAsyncUpdates();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/admin/avatars", expect.objectContaining({ method: "POST" }));
+    expect(container.textContent).toContain("Uploaded avatar for Casey");
+    expect(container.querySelector('[data-member-avatar="casey"] img')?.getAttribute("src")).toBe(uploadUrl);
   });
 
   it("shows a warmer loading state while Tonal data is still loading", async () => {
@@ -176,7 +295,7 @@ describe("DashboardApp", () => {
     expectNoRaceMetaphor(container);
   });
 
-  it("only loads dashboard data on page load and never passively refreshes", async () => {
+  it("only loads dashboard and avatar data on page load and never passively refreshes", async () => {
     vi.useFakeTimers();
 
     await act(async () => {
@@ -187,7 +306,9 @@ describe("DashboardApp", () => {
       await Promise.resolve();
     });
 
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledWith("/api/dashboard");
+    expect(fetch).toHaveBeenCalledWith("/api/avatars");
     expect(container.textContent).toContain("Refresh the page to pull the latest Tonal data.");
     expect(container.textContent).not.toContain("Auto-updates");
     expect(container.textContent).not.toContain("Auto live");
@@ -196,8 +317,7 @@ describe("DashboardApp", () => {
       await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
     });
 
-    expect(fetch).toHaveBeenCalledTimes(1);
-    expect(fetch).toHaveBeenLastCalledWith("/api/dashboard");
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it("renders a body readiness heat map and historical performance charts", async () => {
@@ -591,4 +711,46 @@ function expectNoRaceMetaphor(container: HTMLElement) {
   ]) {
     expect(text).not.toContain(phrase);
   }
+}
+
+function dashboardMember(
+  id: string,
+  name: string,
+  allTime: { totalVolume: number; totalWorkouts: number }
+) {
+  return {
+    member: { id, name },
+    fetchedAt: "2026-05-14T10:00:00.000Z",
+    strength: {},
+    strengthHistory: [],
+    readiness: {},
+    topReady: [],
+    allTime: { totalVolume: allTime.totalVolume, totalWorkouts: allTime.totalWorkouts, totalReps: 0, totalDuration: 0 },
+    weeklyVolume: [],
+    activities: [],
+    recentWorkoutDetails: [],
+    errors: []
+  };
+}
+
+function jsonResponse(payload: unknown, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => payload
+  } as Response;
+}
+
+async function flushAsyncUpdates() {
+  await Promise.resolve();
+  await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+function setFormValue(element: HTMLInputElement | HTMLSelectElement, value: string) {
+  const prototype = element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+  setter?.call(element, value);
+  element.dispatchEvent(new Event("input", { bubbles: true }));
+  element.dispatchEvent(new Event("change", { bubbles: true }));
 }

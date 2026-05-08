@@ -30,6 +30,11 @@ type ApiPayload = {
   members?: TonalDashboard[];
   error?: string;
 };
+type AvatarPayload = {
+  configured?: boolean;
+  avatars?: Record<string, string>;
+  error?: string;
+};
 
 type View = "leaderboard" | "detail";
 type RecentWorkoutDetail = TonalDashboard["recentWorkoutDetails"][number];
@@ -53,10 +58,12 @@ const MAX_FAMILY_WEEKLY_POINTS = 12;
 
 export default function DashboardApp() {
   const [payload, setPayload] = useState<ApiPayload | null>(null);
+  const [avatars, setAvatars] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<string | null>(null);
   const [view, setView] = useState<View>("leaderboard");
   const [category, setCategory] = useState<LeaderboardCategoryId>("allTimeVolume");
   const [loading, setLoading] = useState(false);
+  const [showAvatarAdmin, setShowAvatarAdmin] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -71,14 +78,27 @@ export default function DashboardApp() {
     }
   }
 
+  async function loadAvatars() {
+    try {
+      const response = await fetch("/api/avatars");
+      const next = (await response.json().catch(() => ({ avatars: {} }))) as AvatarPayload;
+      if (response.ok && next.avatars) setAvatars(next.avatars);
+    } catch {
+      setAvatars({});
+    }
+  }
+
   useEffect(() => {
     void load();
+    void loadAvatars();
   }, []);
 
   useEffect(() => {
     function syncFromHash() {
-      const memberId = decodeURIComponent(window.location.hash.replace(/^#member-/, ""));
-      if (memberId && window.location.hash.startsWith("#member-")) {
+      const hash = window.location.hash;
+      setShowAvatarAdmin(hash === "#minda");
+      const memberId = decodeURIComponent(hash.replace(/^#member-/, ""));
+      if (memberId && hash.startsWith("#member-")) {
         setSelected(memberId);
         setView("detail");
       } else {
@@ -103,13 +123,19 @@ export default function DashboardApp() {
   function navigateToLeaderboard() {
     setView("leaderboard");
     setSelected(null);
+    setShowAvatarAdmin(false);
     if (window.location.hash) window.history.pushState(null, "", window.location.pathname);
   }
 
   function openDetail(memberId: string) {
     setSelected(memberId);
     setView("detail");
+    setShowAvatarAdmin(false);
     window.history.pushState(null, "", `#member-${encodeURIComponent(memberId)}`);
+  }
+
+  function handleAvatarUploaded(memberId: string, url: string) {
+    setAvatars((current) => ({ ...current, [memberId]: url }));
   }
 
   return (
@@ -131,9 +157,11 @@ export default function DashboardApp() {
         {payload?.error ? <Notice tone="error">{payload.error}</Notice> : null}
         {payload?.configured === false ? <Notice>{payload.message}</Notice> : null}
         {loading && !payload ? <LoadingState /> : null}
+        {showAvatarAdmin ? <AvatarAdminPanel members={members.map((member) => member.member)} onAvatarUploaded={handleAvatarUploaded} /> : null}
 
         {payload && view === "leaderboard" ? (
           <LeaderboardView
+            avatarMap={avatars}
             category={category}
             leaderboard={leaderboard}
             loading={loading}
@@ -144,7 +172,7 @@ export default function DashboardApp() {
         ) : null}
 
         {payload && view === "detail" && selectedMember ? (
-          <MemberDashboard data={selectedMember} onBack={navigateToLeaderboard} />
+          <MemberDashboard avatarUrl={avatars[selectedMember.member.id]} data={selectedMember} onBack={navigateToLeaderboard} />
         ) : null}
       </section>
     </main>
@@ -152,6 +180,7 @@ export default function DashboardApp() {
 }
 
 function LeaderboardView({
+  avatarMap,
   category,
   leaderboard,
   loading,
@@ -159,6 +188,7 @@ function LeaderboardView({
   onOpenMember,
   updatedAt
 }: {
+  avatarMap: Record<string, string>;
   category: LeaderboardCategoryId;
   leaderboard: RankedTonalMember[];
   loading: boolean;
@@ -230,7 +260,7 @@ function LeaderboardView({
                 <span className="leader-rank">#{member.rank}</span>
                 <RankMovementIndicator member={member} />
               </span>
-              <span className="leader-avatar">{initials(member.member.name)}</span>
+              <MemberAvatar avatarUrl={avatarMap[member.member.id]} className="leader-avatar" member={member.member} />
               <span className="leader-main">
                 <strong>{member.member.name}</strong>
                 <span>{member.allTime.totalWorkouts ? `${formatNumber(member.allTime.totalWorkouts)} workouts` : "No workouts loaded yet"}</span>
@@ -265,7 +295,7 @@ function LeaderboardView({
   );
 }
 
-function MemberDashboard({ data, onBack }: { data: TonalDashboard & { rank: number }; onBack: () => void }) {
+function MemberDashboard({ avatarUrl, data, onBack }: { avatarUrl?: string; data: TonalDashboard & { rank: number }; onBack: () => void }) {
   const recentActivities = data.activities.slice(0, 8);
   const recentWorkoutCards = recentActivities.slice(0, 5);
   const strengthTrend = strengthTrendPoints(data);
@@ -283,12 +313,17 @@ function MemberDashboard({ data, onBack }: { data: TonalDashboard & { rank: numb
       {data.errors.length ? <Notice tone="error">{data.errors.join(" • ")}</Notice> : null}
 
       <div className="athlete-hero">
-        <div>
-          <div className="eyebrow"><Users size={14} /> Rank #{data.rank}</div>
-          <h1>{data.member.name}</h1>
-          <p>
-            {data.allTime.firstWorkoutAt ? `Training tracked since ${formatDate(data.allTime.firstWorkoutAt)}.` : "Waiting for workout history."}
-          </p>
+        <div className="athlete-hero-copy">
+          <div className="athlete-identity">
+            <MemberAvatar avatarUrl={avatarUrl} className="athlete-avatar" member={data.member} />
+            <div>
+              <div className="eyebrow"><Users size={14} /> Rank #{data.rank}</div>
+              <h1>{data.member.name}</h1>
+              <p>
+                {data.allTime.firstWorkoutAt ? `Training tracked since ${formatDate(data.allTime.firstWorkoutAt)}.` : "Waiting for workout history."}
+              </p>
+            </div>
+          </div>
         </div>
         <div className="athlete-volume-card">
           <span>All-time volume</span>
@@ -381,6 +416,152 @@ function MemberDashboard({ data, onBack }: { data: TonalDashboard & { rank: numb
           {!recentWorkoutCards.length ? <Empty text="No recent workouts returned." /> : null}
         </div>
       </section>
+    </section>
+  );
+}
+
+function MemberAvatar({
+  avatarUrl,
+  className = "",
+  member
+}: {
+  avatarUrl?: string;
+  className?: string;
+  member: { id: string; name: string };
+}) {
+  return (
+    <span className={["member-avatar", className].filter(Boolean).join(" ")} data-member-avatar={member.id}>
+      {avatarUrl ? <img alt={`${member.name} avatar`} src={avatarUrl} /> : <span aria-hidden="true">{initials(member.name)}</span>}
+    </span>
+  );
+}
+
+function AvatarAdminPanel({
+  members,
+  onAvatarUploaded
+}: {
+  members: Array<{ id: string; name: string }>;
+  onAvatarUploaded: (memberId: string, url: string) => void;
+}) {
+  const [adminToken, setAdminToken] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [memberId, setMemberId] = useState("");
+  const [status, setStatus] = useState("Choose a member and image to upload a public avatar.");
+  const [uploading, setUploading] = useState(false);
+
+  useEffect(() => {
+    try {
+      setAdminToken(window.sessionStorage.getItem("tonal-avatar-admin-token") ?? "");
+    } catch {
+      setAdminToken("");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!members.length) {
+      setMemberId("");
+      return;
+    }
+    if (!memberId || !members.some((member) => member.id === memberId)) setMemberId(members[0].id);
+  }, [memberId, members]);
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const elements = event.currentTarget.elements as typeof event.currentTarget.elements & {
+      avatarAdminToken?: HTMLInputElement;
+      avatarFile?: HTMLInputElement;
+      avatarMemberId?: HTMLSelectElement;
+    };
+    const token = (elements.avatarAdminToken?.value ?? adminToken).trim();
+    const selectedMemberId = elements.avatarMemberId?.value || memberId;
+    const selectedFile = elements.avatarFile?.files?.[0] ?? file;
+    if (!token) {
+      setStatus("Enter the avatar admin code before uploading.");
+      return;
+    }
+    if (!selectedMemberId) {
+      setStatus("Load Tonal members before uploading an avatar.");
+      return;
+    }
+    if (!selectedFile) {
+      setStatus("Choose a jpeg, png, webp, or gif image first.");
+      return;
+    }
+
+    setUploading(true);
+    setStatus("Uploading avatar...");
+    try {
+      const formData = new FormData();
+      formData.set("memberId", selectedMemberId);
+      formData.set("file", selectedFile);
+      const response = await fetch("/api/admin/avatars", {
+        body: formData,
+        headers: { Authorization: `Bearer ${token}` },
+        method: "POST"
+      });
+      const payload = (await response.json().catch(() => ({ error: `Upload failed (${response.status}).` }))) as {
+        error?: string;
+        memberId?: string;
+        url?: string;
+      };
+
+      if (!response.ok || !payload.memberId || !payload.url) {
+        setStatus(payload.error ?? `Upload failed (${response.status}).`);
+        return;
+      }
+
+      try {
+        window.sessionStorage.setItem("tonal-avatar-admin-token", token);
+      } catch {
+        // Session storage is optional; the successful upload is the source of truth.
+      }
+      onAvatarUploaded(payload.memberId, payload.url);
+      const member = members.find((candidate) => candidate.id === payload.memberId);
+      setStatus(`Uploaded avatar for ${member?.name ?? payload.memberId}.`);
+    } catch (error) {
+      setStatus((error as Error).message);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <section className="avatar-admin-panel" aria-label="Avatar admin">
+      <div>
+        <div className="eyebrow"><Users size={14} /> Avatar admin</div>
+        <h2>Member avatar uploads</h2>
+        <p>This panel is only exposed from the private hash route. Uploaded images are public because the dashboard displays them publicly.</p>
+      </div>
+      <form className="avatar-admin-form" onSubmit={handleSubmit}>
+        <label>
+          <span>Code</span>
+          <input
+            autoComplete="off"
+            name="avatarAdminToken"
+            onChange={(event) => setAdminToken(event.currentTarget.value)}
+            placeholder="Avatar admin code"
+            type="password"
+            value={adminToken}
+          />
+        </label>
+        <label>
+          <span>Member</span>
+          <select name="avatarMemberId" onChange={(event) => setMemberId(event.currentTarget.value)} value={memberId}>
+            {members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
+          </select>
+        </label>
+        <label>
+          <span>Image</span>
+          <input
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            name="avatarFile"
+            onChange={(event) => setFile(event.currentTarget.files?.[0] ?? null)}
+            type="file"
+          />
+        </label>
+        <button disabled={uploading || !members.length} type="submit">{uploading ? "Uploading..." : "Upload avatar"}</button>
+      </form>
+      <p className="avatar-admin-status" role="status">{members.length ? status : "Load Tonal members before uploading avatars."}</p>
     </section>
   );
 }
