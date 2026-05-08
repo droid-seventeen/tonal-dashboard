@@ -68,8 +68,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .brand-mark { display: grid; place-items: center; width: 38px; height: 38px; border: 1px solid rgba(113, 112, 255, .32); border-radius: 12px; background: linear-gradient(180deg, rgba(113, 112, 255, .22), rgba(113, 112, 255, .08)); color: #d8d7ff; box-shadow: inset 0 1px 0 rgba(255,255,255,.08); }
 .brand-title { display: block; font-size: 14px; font-weight: 590; letter-spacing: -0.14px; }
 .brand-subtitle { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; }
-.topbar-actions { display: flex; gap: 8px; }
-.ghost-button, .back-button {
+.back-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -80,11 +79,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   cursor: pointer;
   transition: transform .16s ease, background .16s ease, border-color .16s ease;
 }
-.ghost-button, .back-button { padding: 0 13px; background: rgba(255,255,255,.025); color: #d0d6e0; font-size: 13px; font-weight: 510; text-decoration: none; }
-.ghost-button:hover, .back-button:hover { transform: translateY(-1px); background: rgba(255,255,255,.055); border-color: rgba(255,255,255,.14); }
-.ghost-button:disabled { opacity: .55; cursor: progress; transform: none; }
-.spin { animation: spin .9s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
+.back-button { padding: 0 13px; background: rgba(255,255,255,.025); color: #d0d6e0; font-size: 13px; font-weight: 510; text-decoration: none; }
+.back-button:hover { transform: translateY(-1px); background: rgba(255,255,255,.055); border-color: rgba(255,255,255,.14); }
 
 .leaderboard-page, .detail-page { display: grid; gap: 24px; }
 .leaderboard-hero, .athlete-hero {
@@ -219,7 +215,6 @@ em { color: var(--muted); font-style: normal; font-size: .55em; letter-spacing: 
 @media (max-width: 640px) {
   .dashboard-frame { width: min(100% - 20px, 1180px); padding-top: 10px; }
   .topbar { position: relative; top: 0; flex-direction: column; align-items: stretch; }
-  .topbar-actions { display: grid; grid-template-columns: 1fr; }
   .hero-copy, .athlete-hero > div:first-child, .hero-stat-card, .athlete-volume-card { min-height: auto; padding: 24px; border-radius: 22px; }
   h1 { font-size: 46px; }
   .league-strip, .metric-grid, .strength-grid, .readiness-matrix { grid-template-columns: 1fr; }

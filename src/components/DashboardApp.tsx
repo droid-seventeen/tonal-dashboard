@@ -6,7 +6,6 @@ import {
   ChevronRight,
   Dumbbell,
   Medal,
-  RefreshCw,
   Trophy,
   Users,
   Zap
@@ -23,6 +22,7 @@ type ApiPayload = {
 };
 
 type View = "leaderboard" | "detail";
+const AUTO_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
 export default function DashboardApp() {
   const [payload, setPayload] = useState<ApiPayload | null>(null);
@@ -45,6 +45,8 @@ export default function DashboardApp() {
 
   useEffect(() => {
     void load();
+    const interval = window.setInterval(() => void load(), AUTO_REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -94,11 +96,6 @@ export default function DashboardApp() {
               <span className="brand-subtitle">Family volume board</span>
             </span>
           </a>
-          <div className="topbar-actions">
-            <button className="ghost-button" onClick={load} disabled={loading} type="button">
-              <RefreshCw className={loading ? "spin" : ""} size={15} /> Refresh
-            </button>
-          </div>
         </header>
 
         {payload?.error ? <Notice tone="error">{payload.error}</Notice> : null}
@@ -157,9 +154,9 @@ function LeaderboardView({
         <div className="leaderboard-heading">
           <div>
             <h2>Volume standings</h2>
-            <p>{loading ? "Refreshing live Tonal data…" : "Sorted by all-time Tonal volume."}</p>
+            <p>{loading ? "Updating live Tonal data…" : "Auto-updates from Tonal every five minutes."}</p>
           </div>
-          <span className="live-pill"><span /> Live API</span>
+          <span className="live-pill"><span /> Auto live</span>
         </div>
 
         <div className="leader-list">

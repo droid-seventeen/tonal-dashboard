@@ -17,6 +17,7 @@ describe("DashboardApp", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
+        ok: true,
         status: 200,
         json: async () => ({ configured: true, members: [] })
       })
@@ -26,6 +27,7 @@ describe("DashboardApp", () => {
   afterEach(() => {
     act(() => root.unmount());
     container.remove();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -41,6 +43,28 @@ describe("DashboardApp", () => {
     expect(fetch).toHaveBeenCalledWith("/api/dashboard", { cache: "no-store" });
     expect(container.querySelector('input[type="password"]')).toBeNull();
     expect(container.textContent).toContain("All-time leaderboard");
+    expect(container.textContent).not.toContain("Refresh");
     expect(container.textContent).not.toContain("Logout");
+  });
+
+  it("automatically reloads dashboard data every five minutes", async () => {
+    vi.useFakeTimers();
+
+    await act(async () => {
+      root.render(<DashboardApp />);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenLastCalledWith("/api/dashboard", { cache: "no-store" });
   });
 });
