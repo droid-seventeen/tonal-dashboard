@@ -42,10 +42,70 @@ describe("DashboardApp", () => {
 
     expect(fetch).toHaveBeenCalledWith("/api/dashboard");
     expect(container.querySelector('input[type="password"]')).toBeNull();
-    expect(container.textContent).toContain("All-time leaderboard");
+    expect(container.textContent).toContain("Race to 500K");
+    expect(container.textContent).toContain("The race to 500K is live.");
+    expect(container.textContent).not.toContain("All-time leaderboard");
     const visibleButtons = Array.from(container.querySelectorAll("button")).map((button) => button.textContent);
     expect(visibleButtons).not.toContain("Refresh");
     expect(container.textContent).not.toContain("Logout");
+  });
+
+  it("frames the home screen as the race to 500K", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          configured: true,
+          members: [
+            {
+              member: { id: "taylor", name: "Taylor" },
+              fetchedAt: "2026-04-18T15:00:00.000Z",
+              strength: {},
+              readiness: {},
+              topReady: [],
+              allTime: { totalVolume: 250000, totalWorkouts: 20, totalReps: 2400, totalDuration: 72000 },
+              weeklyVolume: [],
+              activities: [],
+              recentWorkoutDetails: [],
+              errors: []
+            },
+            {
+              member: { id: "casey", name: "Casey" },
+              fetchedAt: "2026-04-18T15:00:00.000Z",
+              strength: {},
+              readiness: {},
+              topReady: [],
+              allTime: { totalVolume: 125000, totalWorkouts: 12, totalReps: 1200, totalDuration: 36000 },
+              weeklyVolume: [],
+              activities: [],
+              recentWorkoutDetails: [],
+              errors: []
+            }
+          ]
+        })
+      })
+    );
+
+    await act(async () => {
+      root.render(<DashboardApp />);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain("Race to 500K");
+    expect(container.textContent).toContain("Pole position");
+    expect(container.textContent).toContain("Taylor");
+    expect(container.textContent).toContain("50% complete");
+    expect(container.textContent).toContain("250,000 lb to the flag");
+    expect(container.textContent).toContain("Pit lane standings");
+    expect(container.textContent).toContain("P1");
+    expect(container.textContent).toContain("P2");
+    expect(container.textContent).toContain("No boring rankings, just odometers.");
+    expect(container.textContent).not.toContain("Volume standings");
   });
 
   it("only loads dashboard data on page load and never passively refreshes", async () => {
@@ -72,7 +132,7 @@ describe("DashboardApp", () => {
     expect(fetch).toHaveBeenLastCalledWith("/api/dashboard");
   });
 
-  it("turns detailed Tonal workout summaries into a movement fingerprint", async () => {
+  it("turns detailed Tonal workout summaries into race telemetry", async () => {
     window.history.replaceState(null, "", "/#member-taylor");
     vi.stubGlobal(
       "fetch",
@@ -163,8 +223,13 @@ describe("DashboardApp", () => {
       await Promise.resolve();
     });
 
-    expect(container.textContent).toContain("Workout DNA");
-    expect(container.textContent).toContain("Movement fingerprint");
+    expect(container.textContent).toContain("Back to race");
+    expect(container.textContent).toContain("Lane #1");
+    expect(container.textContent).toContain("Race odometer");
+    expect(container.textContent).toContain("24% complete");
+    expect(container.textContent).toContain("380,000 lb to the flag");
+    expect(container.textContent).toContain("Pit telemetry");
+    expect(container.textContent).toContain("Movement telemetry");
     expect(container.textContent).toContain("Taylor's Daily Lift");
     expect(container.textContent).toContain("Wide Grip Barbell Bench Press");
     expect(container.textContent).toContain("Reverse Grip Triceps Extension");
@@ -183,6 +248,6 @@ describe("DashboardApp", () => {
     });
 
     expect(window.location.hash).toBe("");
-    expect(container.textContent).toContain("All-time leaderboard");
+    expect(container.textContent).toContain("Race to 500K");
   });
 });

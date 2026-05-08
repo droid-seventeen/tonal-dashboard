@@ -25,6 +25,15 @@ type View = "leaderboard" | "detail";
 type RecentWorkoutDetail = TonalDashboard["recentWorkoutDetails"][number];
 type RecentMovement = RecentWorkoutDetail["movementSets"][number];
 type RecentSet = NonNullable<RecentMovement["sets"]>[number];
+type RaceStats = {
+  volume: number;
+  percent: number;
+  percentLabel: string;
+  remaining: number;
+  complete: boolean;
+};
+const RACE_TARGET_VOLUME = 500_000;
+const RACE_TARGET_LABEL = "500,000";
 
 export default function DashboardApp() {
   const [payload, setPayload] = useState<ApiPayload | null>(null);
@@ -92,8 +101,8 @@ export default function DashboardApp() {
           <a className="brand-lockup" href="#" onClick={(event) => { event.preventDefault(); navigateToLeaderboard(); }}>
             <span className="brand-mark"><Trophy size={18} /></span>
             <span>
-              <span className="brand-title">Tonal League</span>
-              <span className="brand-subtitle">Family volume board</span>
+              <span className="brand-title">Race to 500K</span>
+              <span className="brand-subtitle">Tonal Grand Prix</span>
             </span>
           </a>
         </header>
@@ -123,59 +132,75 @@ function LeaderboardView({
   loading: boolean;
   onOpenMember: (memberId: string) => void;
 }) {
-  const champion = leaderboard[0];
+  const pole = leaderboard[0];
   const totalFamilyVolume = leaderboard.reduce((sum, member) => sum + member.allTime.totalVolume, 0);
   const totalFamilyWorkouts = leaderboard.reduce((sum, member) => sum + member.allTime.totalWorkouts, 0);
+  const poleRace = raceStats(pole?.allTime.totalVolume ?? 0);
 
   return (
-    <section className="leaderboard-page">
-      <div className="leaderboard-hero">
-        <div className="hero-copy">
-          <div className="eyebrow"><Medal size={14} /> All-time leaderboard</div>
-          <h1>Who has moved the most iron?</h1>
+    <section className="leaderboard-page race-page">
+      <div className="leaderboard-hero race-hero">
+        <div className="hero-copy race-hero-copy">
+          <div className="eyebrow"><Medal size={14} /> Green flag is up</div>
+          <h1>The race to 500K is live.</h1>
           <p>
-            Lifetime Tonal volume, ranked across everyone in the family. Click a competitor to open their training dashboard.
+            First to {RACE_TARGET_LABEL} lifetime pounds owns the family paddock. No boring rankings, just odometers.
           </p>
         </div>
-        <div className="hero-stat-card">
-          <span className="stat-overline">Current leader</span>
-          <strong>{champion?.member.name ?? "Waiting for data"}</strong>
-          <span>{champion ? `${formatNumber(champion.allTime.totalVolume)} lb lifted` : "Add Tonal members to begin."}</span>
+        <div className="hero-stat-card race-control-card">
+          <span className="stat-overline">Pole position</span>
+          <strong>{pole?.member.name ?? "Waiting for racers"}</strong>
+          {pole ? (
+            <>
+              <span>{formatNumber(pole.allTime.totalVolume)} / {RACE_TARGET_LABEL} lb • {poleRace.percentLabel} complete</span>
+              <RaceProgressBar stats={poleRace} />
+              <span className="race-remaining">{raceRemainingLabel(poleRace)}</span>
+            </>
+          ) : (
+            <span>Add Tonal members to open the starting grid.</span>
+          )}
         </div>
       </div>
 
-      <div className="league-strip">
-        <LeagueStat label="Family volume" value={formatNumber(totalFamilyVolume)} suffix="lb" />
-        <LeagueStat label="Tracked workouts" value={formatNumber(totalFamilyWorkouts)} />
-        <LeagueStat label="Competitors" value={formatNumber(leaderboard.length)} />
+      <div className="league-strip race-strip">
+        <LeagueStat label="Race target" value={RACE_TARGET_LABEL} suffix="lb" />
+        <LeagueStat label="Crew volume" value={formatNumber(totalFamilyVolume)} suffix="lb" />
+        <LeagueStat label="Race logs" value={formatNumber(totalFamilyWorkouts)} />
       </div>
 
-      <div className="leaderboard-card">
+      <div className="leaderboard-card race-standings-card">
         <div className="leaderboard-heading">
           <div>
-            <h2>Volume standings</h2>
-            <p>{loading ? "Loading Tonal data…" : "Refresh the page to pull the latest Tonal data."}</p>
+            <h2>Pit lane standings</h2>
+            <p>{loading ? "Clocking fresh Tonal splits…" : "No boring rankings, just odometers. Refresh the page to pull the latest Tonal data."}</p>
           </div>
-          <span className="live-pill"><span /> Page refresh only</span>
+          <span className="live-pill"><span /> Manual timing</span>
         </div>
 
-        <div className="leader-list">
-          {leaderboard.map((member) => (
-            <a className="leader-row" href={`#member-${encodeURIComponent(member.member.id)}`} key={member.member.id} onClick={(event) => { event.preventDefault(); onOpenMember(member.member.id); }}>
-              <span className="leader-rank">#{member.rank}</span>
-              <span className="leader-avatar">{initials(member.member.name)}</span>
-              <span className="leader-main">
-                <strong>{member.member.name}</strong>
-                <span>{member.allTime.totalWorkouts ? `${formatNumber(member.allTime.totalWorkouts)} workouts` : "No workouts loaded yet"}</span>
-              </span>
-              <span className="leader-volume">
-                <strong>{formatNumber(member.allTime.totalVolume)}</strong>
-                <span>lb all-time</span>
-              </span>
-              <ChevronRight className="leader-chevron" size={18} />
-            </a>
-          ))}
-          {!leaderboard.length ? <Empty text="No members configured yet. Add TONAL_MEMBERS_JSON entries to populate the league." /> : null}
+        <div className="leader-list race-list">
+          {leaderboard.map((member) => {
+            const stats = raceStats(member.allTime.totalVolume);
+            return (
+              <a className="leader-row race-row" href={`#member-${encodeURIComponent(member.member.id)}`} key={member.member.id} onClick={(event) => { event.preventDefault(); onOpenMember(member.member.id); }}>
+                <span className="leader-rank">P{member.rank}</span>
+                <span className="leader-avatar">{initials(member.member.name)}</span>
+                <span className="leader-main">
+                  <strong>{member.member.name}</strong>
+                  <span>{stats.percentLabel} complete • {member.allTime.totalWorkouts ? `${formatNumber(member.allTime.totalWorkouts)} race logs` : "Awaiting first lap"}</span>
+                </span>
+                <span className="race-progress-cell">
+                  <span>{raceRemainingLabel(stats)}</span>
+                  <RaceProgressBar stats={stats} />
+                </span>
+                <span className="leader-volume">
+                  <strong>{formatNumber(member.allTime.totalVolume)}</strong>
+                  <span>lb logged</span>
+                </span>
+                <ChevronRight className="leader-chevron" size={18} />
+              </a>
+            );
+          })}
+          {!leaderboard.length ? <Empty text="No racers configured yet. Add TONAL_MEMBERS_JSON entries to open the grid." /> : null}
         </div>
       </div>
     </section>
@@ -186,40 +211,43 @@ function MemberDashboard({ data, onBack }: { data: TonalDashboard & { rank: numb
   const maxWeekVolume = Math.max(1, ...data.weeklyVolume.map((week) => week.volume));
   const recentActivities = data.activities.slice(0, 8);
   const recentWorkoutCards = recentActivities.slice(0, 5);
+  const racerStats = raceStats(data.allTime.totalVolume);
   const detailsByActivity = useMemo(
     () => new Map((data.recentWorkoutDetails ?? []).map((detail) => [detail.activityId, detail])),
     [data.recentWorkoutDetails]
   );
   return (
     <section className="detail-page">
-      <a className="back-button" href="#" onClick={(event) => { event.preventDefault(); onBack(); }}><ArrowLeft size={16} /> Back to leaderboard</a>
+      <a className="back-button" href="#" onClick={(event) => { event.preventDefault(); onBack(); }}><ArrowLeft size={16} /> Back to race</a>
       {data.errors.length ? <Notice tone="error">{data.errors.join(" • ")}</Notice> : null}
 
       <div className="athlete-hero">
         <div>
-          <div className="eyebrow"><Users size={14} /> Rank #{data.rank}</div>
-          <h1>{data.member.name}</h1>
+          <div className="eyebrow"><Users size={14} /> Lane #{data.rank} / {RACE_TARGET_LABEL} chase</div>
+          <h1>{data.member.name} in the chase</h1>
           <p>
-            {data.allTime.firstWorkoutAt ? `Training tracked since ${formatDate(data.allTime.firstWorkoutAt)}.` : "Waiting for workout history."}
+            {data.allTime.firstWorkoutAt ? `Race started ${formatDate(data.allTime.firstWorkoutAt)}.` : "Waiting for a first lap."} {raceRemainingLabel(racerStats)}.
           </p>
         </div>
-        <div className="athlete-volume-card">
-          <span>All-time volume</span>
+        <div className="athlete-volume-card race-control-card">
+          <span>Race odometer</span>
           <strong>{formatNumber(data.allTime.totalVolume)}</strong>
-          <span>pounds lifted</span>
+          <span>{racerStats.percentLabel} complete • {RACE_TARGET_LABEL} lb finish</span>
+          <RaceProgressBar stats={racerStats} />
+          <span className="race-remaining">{raceRemainingLabel(racerStats)}</span>
         </div>
       </div>
 
       <div className="metric-grid">
-        <MetricCard icon={<Trophy size={17} />} label="All-time volume" value={formatNumber(data.allTime.totalVolume)} suffix="lb" />
-        <MetricCard icon={<Dumbbell size={17} />} label="Workouts" value={formatNumber(data.allTime.totalWorkouts)} />
-        <MetricCard icon={<Zap size={17} />} label="Total reps" value={formatNumber(data.allTime.totalReps)} />
-        <MetricCard icon={<CalendarDays size={17} />} label="Time trained" value={formatDuration(data.allTime.totalDuration)} />
+        <MetricCard icon={<Trophy size={17} />} label="Race progress" value={`${racerStats.percentLabel} complete`} />
+        <MetricCard icon={<Dumbbell size={17} />} label="To checkered flag" value={formatNumber(racerStats.remaining)} suffix="lb" />
+        <MetricCard icon={<Zap size={17} />} label="Fuel burned" value={formatNumber(data.allTime.totalReps)} suffix="reps" />
+        <MetricCard icon={<CalendarDays size={17} />} label="Track time" value={formatDuration(data.allTime.totalDuration)} />
       </div>
 
       <div className="detail-grid">
         <section className="panel strength-panel">
-          <div className="panel-heading"><h2>Strength score</h2><span>Current</span></div>
+          <div className="panel-heading"><h2>Engine rating</h2><span>Current tune</span></div>
           <div className="strength-grid">
             <StrengthDial label="Overall" value={data.strength.overall} featured />
             <StrengthDial label="Upper" value={data.strength.upper} />
@@ -229,7 +257,7 @@ function MemberDashboard({ data, onBack }: { data: TonalDashboard & { rank: numb
         </section>
 
         <section className="panel readiness-panel">
-          <div className="panel-heading"><h2>Most recovered</h2><span>Readiness</span></div>
+          <div className="panel-heading"><h2>Pit crew recovery</h2><span>Ready muscles</span></div>
           <div className="readiness-list">
             {data.topReady.map(([muscle, score]) => <ReadinessRow key={muscle} muscle={muscle} score={score} />)}
             {!data.topReady.length ? <Empty text="No readiness data returned." /> : null}
@@ -237,7 +265,7 @@ function MemberDashboard({ data, onBack }: { data: TonalDashboard & { rank: numb
         </section>
 
         <section className="panel weekly-panel">
-          <div className="panel-heading"><h2>Weekly volume</h2><span>Recent</span></div>
+          <div className="panel-heading"><h2>Lap volume</h2><span>Recent splits</span></div>
           <div className="weekly-bars">
             {data.weeklyVolume.slice(-8).map((week) => (
               <div className="week-row" key={week.week}>
@@ -251,7 +279,7 @@ function MemberDashboard({ data, onBack }: { data: TonalDashboard & { rank: numb
         </section>
 
         <section className="panel readiness-matrix-panel">
-          <div className="panel-heading"><h2>Readiness matrix</h2><span>{Object.keys(data.readiness).length} muscles</span></div>
+          <div className="panel-heading"><h2>Muscle garage</h2><span>{Object.keys(data.readiness).length} muscles</span></div>
           <div className="readiness-matrix">
             {Object.entries(data.readiness).sort().map(([muscle, score]) => (
               <div className="muscle-tile" key={muscle}>
@@ -266,8 +294,8 @@ function MemberDashboard({ data, onBack }: { data: TonalDashboard & { rank: numb
       <section className="panel workouts-panel">
         <div className="panel-heading workout-dna-heading">
           <div>
-            <h2>Workout DNA</h2>
-            <p>Movement fingerprint cards built from Tonal&apos;s formatted per-movement summaries.</p>
+            <h2>Pit telemetry</h2>
+            <p>Workout DNA rebuilt as race telemetry: movement bars, power spikes, and next-lap weight nudges.</p>
           </div>
           <span>Latest {recentWorkoutCards.length || 0}</span>
         </div>
@@ -284,6 +312,10 @@ function MemberDashboard({ data, onBack }: { data: TonalDashboard & { rank: numb
       </section>
     </section>
   );
+}
+
+function RaceProgressBar({ stats }: { stats: RaceStats }) {
+  return <span className="race-progress-track"><span style={{ width: `${stats.percent}%` }} /></span>;
 }
 
 function LeagueStat({ label, value, suffix }: { label: string; value: string; suffix?: string }) {
@@ -338,7 +370,7 @@ function WorkoutDnaCard({
 
       <div className="movement-fingerprint">
         <div className="movement-fingerprint-heading">
-          <span>Movement fingerprint</span>
+          <span>Movement telemetry</span>
           <strong>{detail?.totalWork ? `${formatNumber(detail.totalWork)} work` : detail ? "Per-movement" : "Summary only"}</strong>
         </div>
         {movements.length ? (
@@ -428,6 +460,22 @@ function LeaderboardSkeleton() {
 
 function initials(name: string): string {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "?";
+}
+
+function raceStats(value?: number | null): RaceStats {
+  const volume = typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0;
+  const percent = Math.min(100, (volume / RACE_TARGET_VOLUME) * 100);
+  return {
+    volume,
+    percent,
+    percentLabel: `${Math.round(percent)}%`,
+    remaining: Math.max(0, RACE_TARGET_VOLUME - volume),
+    complete: volume >= RACE_TARGET_VOLUME
+  };
+}
+
+function raceRemainingLabel(stats: RaceStats): string {
+  return stats.complete ? "Checkered flag claimed" : `${formatNumber(stats.remaining)} lb to the flag`;
 }
 
 function formatDate(value: string): string {
