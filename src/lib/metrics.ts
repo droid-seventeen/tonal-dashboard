@@ -925,9 +925,24 @@ function streakLabel(streak: number): string {
 
 function overallStrengthDelta(member: DashboardMetricMember): number | undefined {
   const points = [...(member.strengthHistory ?? [])]
-    .filter((entry) => typeof entry.overall === "number" && Number.isFinite(entry.overall))
-    .sort((a, b) => new Date(a.activityTime).getTime() - new Date(b.activityTime).getTime());
-  if (points.length >= 2) return Math.round((points.at(-1)!.overall ?? 0) - (points[0].overall ?? 0));
+    .map((entry, index) => {
+      const time = timestamp(entry.activityTime);
+      const value = positiveFiniteNumber(entry.overall);
+      return time === undefined || value === undefined ? undefined : { order: index, time, value };
+    })
+    .filter((entry): entry is { order: number; time: number; value: number } => Boolean(entry));
+  const current = positiveFiniteNumber(member.strength?.overall);
+  if (current !== undefined) {
+    const latestHistoryTime = Math.max(0, ...points.map((point) => point.time));
+    points.push({
+      order: Number.MAX_SAFE_INTEGER,
+      time: timestamp(member.fetchedAt) ?? latestHistoryTime + 1,
+      value: current
+    });
+  }
+
+  points.sort((a, b) => a.time - b.time || a.order - b.order);
+  if (points.length >= 2) return Math.round(points.at(-1)!.value - points[0].value);
   return undefined;
 }
 
@@ -971,6 +986,17 @@ export function isoWeekKey(input: Date): string {
 
 function finiteNumber(value?: number | null): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? Math.round(value) : undefined;
+}
+
+function positiveFiniteNumber(value?: number | null): number | undefined {
+  const number = finiteNumber(value);
+  return number !== undefined && number > 0 ? number : undefined;
+}
+
+function timestamp(value?: string | null): number | undefined {
+  if (!value) return undefined;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : undefined;
 }
 
 export function formatDuration(seconds?: number | null): string {

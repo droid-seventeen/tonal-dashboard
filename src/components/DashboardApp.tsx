@@ -12,6 +12,7 @@ import {
   formatDuration,
   formatNumber,
   getMemberDetailInsights,
+  isoWeekKey,
   LEADERBOARD_CATEGORIES,
   latestDashboardTimestamp,
   rankMembersForCategory,
@@ -51,7 +52,6 @@ const READINESS_LEVELS: Record<ReadinessLevel, { label: string; color: string; r
   prime: { label: "Prime", color: "#10b981", range: "85–100%" }
 };
 const FAMILY_SERIES_COLORS = ["#7170ff", "#10b981", "#f2c879", "#ff6b8a", "#38bdf8", "#c084fc", "#a3e635"];
-const MAX_FAMILY_WEEKLY_POINTS = 12;
 
 export default function DashboardApp() {
   const [payload, setPayload] = useState<ApiPayload | null>(null);
@@ -195,12 +195,18 @@ function LeaderboardView({
 }) {
   const champion = leaderboard[0];
   const categoryDefinition = LEADERBOARD_CATEGORIES.find((candidate) => candidate.id === category) ?? LEADERBOARD_CATEGORIES[0];
+  const chartNow = updatedAt ?? latestDashboardTimestamp(leaderboard) ?? new Date();
+  const chartWeeks = familyChartWeeks(leaderboard, category, chartNow);
+  const chartWeekSet = new Set(chartWeeks);
   const totalFamilyVolume = leaderboard.reduce((sum, member) => sum + member.allTime.totalVolume, 0);
   const totalFamilyWorkouts = leaderboard.reduce((sum, member) => sum + member.allTime.totalWorkouts, 0);
-  const familyWeeklyPeak = Math.max(0, ...leaderboard.flatMap((member) => member.weeklyVolume.map((week) => week.volume)));
+  const familyWeeklyPeak = Math.max(
+    0,
+    ...leaderboard.flatMap((member) => weeklyVolumePoints(member.weeklyVolume).filter((point) => chartWeekSet.has(point.label)).map((point) => point.value))
+  );
   const familyStrengthPeak = Math.max(
     0,
-    ...leaderboard.flatMap((member) => familyStrengthScorePoints(member).map((point) => point.value))
+    ...leaderboard.flatMap((member) => familyStrengthScorePoints(member, chartWeeks).map((point) => point.value))
   );
 
   return (
@@ -282,17 +288,6 @@ function LeaderboardView({
         </div>
       </div>
 
-      <section className="panel family-weekly-panel">
-        <div className="panel-heading trend-heading">
-          <div>
-            <h2>Family weekly volume</h2>
-            <p>Everyone&apos;s weekly pounds moved on the same time axis.</p>
-          </div>
-          <span>{familyWeeklyPeak ? `${formatNumber(familyWeeklyPeak)} lb peak week` : "No weekly data"}</span>
-        </div>
-        <FamilyWeeklyVolumeOverlay members={leaderboard} />
-      </section>
-
       <section className="panel family-strength-panel">
         <div className="panel-heading trend-heading">
           <div>
@@ -301,7 +296,18 @@ function LeaderboardView({
           </div>
           <span>{familyStrengthPeak ? `${formatNumber(familyStrengthPeak)} peak score` : "No strength data"}</span>
         </div>
-        <FamilyStrengthScoreOverlay members={leaderboard} />
+        <FamilyStrengthScoreOverlay members={leaderboard} weeks={chartWeeks} />
+      </section>
+
+      <section className="panel family-weekly-panel">
+        <div className="panel-heading trend-heading">
+          <div>
+            <h2>Family weekly volume</h2>
+            <p>Everyone&apos;s weekly pounds moved on the same time axis.</p>
+          </div>
+          <span>{familyWeeklyPeak ? `${formatNumber(familyWeeklyPeak)} lb peak week` : "No weekly data"}</span>
+        </div>
+        <FamilyWeeklyVolumeOverlay members={leaderboard} weeks={chartWeeks} />
       </section>
     </section>
   );
@@ -924,7 +930,7 @@ function TrendLineChart({
   );
 }
 
-function FamilyWeeklyVolumeOverlay({ members }: { members: RankedTonalMember[] }) {
+function FamilyWeeklyVolumeOverlay({ members, weeks }: { members: RankedTonalMember[]; weeks: string[] }) {
   const series = members
     .map((member, index) => ({
       id: member.member.id,
@@ -934,15 +940,13 @@ function FamilyWeeklyVolumeOverlay({ members }: { members: RankedTonalMember[] }
     }))
     .filter((member) => member.points.length);
 
-  if (!series.length) return <Empty text="No weekly volume data yet." />;
+  if (!series.length || !weeks.length) return <Empty text="No weekly volume data yet." />;
 
-  const weeks = Array.from(new Set(series.flatMap((member) => member.points.map((point) => point.label))))
-    .sort((a, b) => a.localeCompare(b))
-    .slice(-MAX_FAMILY_WEEKLY_POINTS);
+  const weekSet = new Set(weeks);
   const width = 760;
   const height = 260;
   const padding = 34;
-  const max = Math.max(1, ...series.flatMap((member) => member.points.map((point) => point.value)));
+  const max = Math.max(1, ...series.flatMap((member) => member.points.filter((point) => weekSet.has(point.label)).map((point) => point.value)));
   const baseY = height - padding;
   const range = Math.max(1, Math.ceil(max * 1.12));
   const xForWeek = (index: number) => weeks.length === 1 ? width / 2 : padding + (index / (weeks.length - 1)) * (width - padding * 2);
@@ -995,26 +999,22 @@ function FamilyWeeklyVolumeOverlay({ members }: { members: RankedTonalMember[] }
   );
 }
 
-function FamilyStrengthScoreOverlay({ members }: { members: RankedTonalMember[] }) {
+function FamilyStrengthScoreOverlay({ members, weeks }: { members: RankedTonalMember[]; weeks: string[] }) {
   const series = members
     .map((member, index) => ({
       id: member.member.id,
       name: member.member.name,
       color: FAMILY_SERIES_COLORS[index % FAMILY_SERIES_COLORS.length],
-      points: familyStrengthScorePoints(member)
+      points: familyStrengthScorePoints(member, weeks)
     }))
     .filter((member) => member.points.length);
 
-  if (!series.length) return <Empty text="No overall strength score history returned yet." />;
+  if (!series.length || !weeks.length) return <Empty text="No overall strength score history returned yet." />;
 
-  const keys = Array.from(new Set(series.flatMap((member) => member.points.map((point) => point.sortKey))))
-    .sort((a, b) => a.localeCompare(b))
-    .slice(-MAX_FAMILY_WEEKLY_POINTS);
-  const labelByKey = new Map(series.flatMap((member) => member.points.map((point) => [point.sortKey, point.label] as const)));
   const width = 760;
   const height = 260;
   const padding = 34;
-  const values = series.flatMap((member) => member.points.filter((point) => keys.includes(point.sortKey)).map((point) => point.value));
+  const values = series.flatMap((member) => member.points.map((point) => point.value));
   const minRaw = Math.min(...values);
   const maxRaw = Math.max(...values);
   const spread = Math.max(1, maxRaw - minRaw);
@@ -1023,13 +1023,12 @@ function FamilyStrengthScoreOverlay({ members }: { members: RankedTonalMember[] 
   const range = Math.max(1, max - min);
   const baseY = height - padding;
   const xForKey = (key: string) => {
-    const index = keys.indexOf(key);
-    return keys.length === 1 ? width / 2 : padding + (index / (keys.length - 1)) * (width - padding * 2);
+    const index = weeks.indexOf(key);
+    return weeks.length === 1 ? width / 2 : padding + (index / (weeks.length - 1)) * (width - padding * 2);
   };
   const yForValue = (value: number) => padding + ((max - value) / range) * (height - padding * 2);
   const chartSeries = series.map((member) => {
     const coords = member.points
-      .filter((point) => keys.includes(point.sortKey))
       .map((point) => ({ ...point, x: xForKey(point.sortKey), y: yForValue(point.value) }));
     const pathD = coords.map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
     return { ...member, coords, pathD, latest: coords.at(-1) };
@@ -1045,7 +1044,9 @@ function FamilyStrengthScoreOverlay({ members }: { members: RankedTonalMember[] 
         {chartSeries.map((member) => (
           <g className="family-strength-series" key={member.id} style={{ "--series-color": member.color } as React.CSSProperties}>
             <title>{member.name} strength score history</title>
-            <path className="family-strength-line" d={member.pathD} data-series={`strength-score-${member.id}`} fill="none" stroke={member.color} />
+            <path className="family-strength-line" d={member.pathD} data-series={`strength-score-${member.id}`} fill="none" stroke={member.color}>
+              {weeks.length === 1 ? <title>{member.name} latest: {formatNumber(member.latest?.value)} strength score</title> : null}
+            </path>
             {member.coords.map((point) => (
               <circle className="family-strength-point" cx={point.x} cy={point.y} key={`${member.id}-${point.sortKey}`} r="3.8">
                 <title>{member.name} {point.label}: {formatNumber(point.value)} strength score</title>
@@ -1059,9 +1060,9 @@ function FamilyStrengthScoreOverlay({ members }: { members: RankedTonalMember[] 
         <text className="trend-axis-label trend-axis-label-x" x={width / 2} y={height - 5}>Snapshot</text>
       </svg>
       <div className="family-strength-axis-row">
-        <span>{labelByKey.get(keys[0]) ?? keys[0]}</span>
+        <span>{weeks[0]}</span>
         <strong>Overall strength score</strong>
-        <span>{labelByKey.get(keys.at(-1) ?? "") ?? keys.at(-1)}</span>
+        <span>{weeks.at(-1)}</span>
       </div>
       <div className="family-strength-legend">
         {chartSeries.map((member) => (
@@ -1075,15 +1076,55 @@ function FamilyStrengthScoreOverlay({ members }: { members: RankedTonalMember[] 
   );
 }
 
-function familyStrengthScorePoints(member: TonalDashboard): Array<TrendPoint & { sortKey: string }> {
-  const history = (member.strengthHistory ?? [])
-    .map((entry) => ({ label: formatShortDate(entry.activityTime), sortKey: entry.activityTime, value: entry.overall }))
-    .filter((entry): entry is TrendPoint & { sortKey: string } => typeof entry.value === "number" && Number.isFinite(entry.value))
-    .sort((a, b) => a.sortKey.localeCompare(b.sortKey));
-  if (history.length) return history;
-  return typeof member.strength.overall === "number" && Number.isFinite(member.strength.overall)
-    ? [{ label: "Current", sortKey: member.fetchedAt ?? "current", value: member.strength.overall }]
-    : [];
+function familyChartWeeks(members: RankedTonalMember[], category: LeaderboardCategoryId, now: Date): string[] {
+  const availableWeeks = Array.from(new Set(members.flatMap((member) => member.weeklyVolume.map((week) => week.week).filter(isIsoWeekKey))))
+    .sort((a, b) => a.localeCompare(b));
+
+  if (category === "thisWeekVolume" || category === "fairnessAdjusted") return [isoWeekKey(now)];
+  if (category === "thisMonthVolume") {
+    const monthWeeks = availableWeeks.filter((week) => isoWeekOverlapsMonth(week, now));
+    return monthWeeks.length ? monthWeeks : [isoWeekKey(now)];
+  }
+  return availableWeeks;
+}
+
+function familyStrengthScorePoints(member: TonalDashboard, weeks: string[]): Array<TrendPoint & { sortKey: string }> {
+  const snapshots = strengthSnapshotsForWeeks(member, weeks);
+  if (!snapshots.length || !weeks.length) return [];
+
+  let latest: { value: number } | undefined;
+  let snapshotIndex = 0;
+  const points: Array<TrendPoint & { sortKey: string }> = [];
+
+  for (const week of weeks) {
+    const weekEnd = isoWeekEndDate(week);
+    if (!weekEnd) continue;
+    while (snapshotIndex < snapshots.length && snapshots[snapshotIndex].time <= weekEnd.getTime()) {
+      latest = snapshots[snapshotIndex];
+      snapshotIndex += 1;
+    }
+    if (latest) points.push({ label: week, sortKey: week, value: latest.value });
+  }
+
+  return points;
+}
+
+function strengthSnapshotsForWeeks(member: TonalDashboard, weeks: string[]): Array<{ time: number; value: number; order: number }> {
+  const snapshots = (member.strengthHistory ?? [])
+    .map((entry, index) => {
+      const time = timestamp(entry.activityTime);
+      const value = positiveStrengthScore(entry.overall);
+      return time === undefined || value === undefined ? undefined : { time, value, order: index };
+    })
+    .filter((entry): entry is { time: number; value: number; order: number } => Boolean(entry));
+  const current = positiveStrengthScore(member.strength.overall);
+  if (current !== undefined) {
+    const lastWeek = weeks.at(-1);
+    const currentTime = timestamp(member.fetchedAt) ?? (lastWeek ? isoWeekEndDate(lastWeek)?.getTime() : undefined);
+    if (currentTime !== undefined) snapshots.push({ time: currentTime, value: current, order: Number.MAX_SAFE_INTEGER });
+  }
+
+  return snapshots.sort((a, b) => a.time - b.time || a.order - b.order);
 }
 
 function BodyReadinessDiagram({ readiness }: { readiness: Record<string, number> }) {
@@ -1289,11 +1330,30 @@ function initials(name: string): string {
 }
 
 function strengthTrendPoints(data: TonalDashboard): TrendPoint[] {
-  const history = (data.strengthHistory ?? [])
-    .map((entry) => ({ label: formatShortDate(entry.activityTime), value: entry.overall }))
-    .filter((entry): entry is TrendPoint => typeof entry.value === "number" && Number.isFinite(entry.value));
-  if (history.length) return history;
-  return typeof data.strength.overall === "number" ? [{ label: "Current", value: data.strength.overall }] : [];
+  const points = (data.strengthHistory ?? [])
+    .map((entry, index) => {
+      const time = timestamp(entry.activityTime);
+      const value = positiveStrengthScore(entry.overall);
+      return time === undefined || value === undefined
+        ? undefined
+        : { label: formatShortDate(entry.activityTime), order: index, time, value };
+    })
+    .filter((entry): entry is TrendPoint & { order: number; time: number } => Boolean(entry));
+  const current = positiveStrengthScore(data.strength.overall);
+  if (current !== undefined) {
+    const fetchedAtTime = timestamp(data.fetchedAt);
+    const latestHistoryTime = Math.max(0, ...points.map((point) => point.time));
+    points.push({
+      label: data.fetchedAt && fetchedAtTime !== undefined ? formatShortDate(data.fetchedAt) : "Current",
+      order: Number.MAX_SAFE_INTEGER,
+      time: fetchedAtTime ?? latestHistoryTime + 1,
+      value: current
+    });
+  }
+
+  return points
+    .sort((a, b) => a.time - b.time || a.order - b.order)
+    .map(({ label, value }) => ({ label, value }));
 }
 
 function cumulativeVolumePoints(weeks: TonalDashboard["weeklyVolume"]): TrendPoint[] {
@@ -1315,6 +1375,53 @@ function weeklyVolumePoints(weeks: TonalDashboard["weeklyVolume"]): TrendPoint[]
 function trendDelta(points: TrendPoint[]): number | undefined {
   if (points.length < 2) return undefined;
   return Math.round(points.at(-1)!.value - points[0].value);
+}
+
+function positiveStrengthScore(value?: number | null): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.round(value) : undefined;
+}
+
+function timestamp(value?: string | null): number | undefined {
+  if (!value) return undefined;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : undefined;
+}
+
+function isIsoWeekKey(value: string): boolean {
+  return /^\d{4}-W\d{2}$/.test(value) && Boolean(isoWeekStartDate(value));
+}
+
+function isoWeekOverlapsMonth(week: string, month: Date): boolean {
+  const start = isoWeekStartDate(week);
+  if (!start) return false;
+  const end = isoWeekEndDate(week);
+  if (!end) return false;
+  const monthStart = new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth(), 1));
+  const nextMonthStart = new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth() + 1, 1));
+  return start.getTime() < nextMonthStart.getTime() && end.getTime() >= monthStart.getTime();
+}
+
+function isoWeekEndDate(week: string): Date | undefined {
+  const start = isoWeekStartDate(week);
+  if (!start) return undefined;
+  const end = new Date(start);
+  end.setUTCDate(start.getUTCDate() + 6);
+  end.setUTCHours(23, 59, 59, 999);
+  return end;
+}
+
+function isoWeekStartDate(week: string): Date | undefined {
+  const match = /^(\d{4})-W(\d{2})$/.exec(week);
+  if (!match) return undefined;
+  const year = Number(match[1]);
+  const weekNumber = Number(match[2]);
+  if (!Number.isInteger(year) || !Number.isInteger(weekNumber) || weekNumber < 1 || weekNumber > 53) return undefined;
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const jan4Day = jan4.getUTCDay() || 7;
+  const monday = new Date(jan4);
+  monday.setUTCDate(jan4.getUTCDate() + 1 - jan4Day + (weekNumber - 1) * 7);
+  monday.setUTCHours(0, 0, 0, 0);
+  return monday;
 }
 
 function readinessScore(readiness: Record<string, number>, muscle: string): number | undefined {

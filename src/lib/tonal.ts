@@ -121,7 +121,7 @@ export async function getFamilyDashboard(member: TonalMember): Promise<TonalDash
 
   const [strengthRaw, strengthHistoryRaw, readinessRaw, activitiesRaw, workoutActivitiesRaw] = await Promise.all([
     client.get<unknown[]>(`/v6/users/${userId}/strength-scores/current`).catch((error) => noteError(errors, "strength", error)),
-    client.get<unknown[]>(`/v6/users/${userId}/strength-scores/history?limit=40`).catch((error) => noteError(errors, "strength history", error)),
+    client.get<unknown[]>(`/v6/users/${userId}/strength-scores/history?limit=500`).catch((error) => noteError(errors, "strength history", error)),
     client.get<Record<string, number>>(`/v6/users/${userId}/muscle-readiness/current`).catch((error) => noteError(errors, "readiness", error)),
     client.get<TonalActivity[]>(`/v6/users/${userId}/activities?limit=20`).catch((error) => noteError(errors, "activities", error)),
     client.getPaginated<TonalWorkoutActivity>(`/v6/users/${userId}/workout-activities`).catch((error) =>

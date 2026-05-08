@@ -203,14 +203,25 @@ describe("DashboardApp", () => {
               fetchedAt: "2026-05-14T10:00:00.000Z",
               strength: { overall: 520 },
               strengthHistory: [
+                { activityTime: "2025-01-02T10:00:00Z", overall: 390 },
                 { activityTime: "2026-04-01T10:00:00Z", overall: 505 },
                 { activityTime: "2026-04-15T10:00:00Z", overall: 512 },
-                { activityTime: "2026-05-01T10:00:00Z", overall: 520 }
+                { activityTime: "2026-05-01T10:00:00Z", overall: 0 }
               ],
               readiness: {},
               topReady: [],
               allTime: { totalVolume: 250000, totalWorkouts: 20, totalReps: 2400, totalDuration: 72000 },
               weeklyVolume: [
+                { week: "2025-W01", workouts: 1, volume: 5000 },
+                { week: "2025-W20", workouts: 1, volume: 6000 },
+                { week: "2025-W30", workouts: 1, volume: 7000 },
+                { week: "2025-W40", workouts: 1, volume: 8000 },
+                { week: "2025-W50", workouts: 1, volume: 9000 },
+                { week: "2026-W01", workouts: 1, volume: 10000 },
+                { week: "2026-W05", workouts: 1, volume: 11000 },
+                { week: "2026-W09", workouts: 1, volume: 12000 },
+                { week: "2026-W13", workouts: 1, volume: 13000 },
+                { week: "2026-W17", workouts: 1, volume: 13500 },
                 { week: "2026-W19", workouts: 2, volume: 14000 },
                 { week: "2026-W20", workouts: 1, volume: 8000 }
               ],
@@ -271,7 +282,7 @@ describe("DashboardApp", () => {
     expect(container.textContent).toContain("This week 8,000 lb");
     expect(container.textContent).toContain("-43% vs prior week");
     expect(container.textContent).toContain("2-week streak");
-    expect(container.textContent).toContain("+15 strength");
+    expect(container.textContent).toContain("+130 strength");
     expect(container.textContent).toContain("#1");
     expect(container.textContent).toContain("#2");
     expect(container.textContent).toContain("20 workouts");
@@ -283,6 +294,11 @@ describe("DashboardApp", () => {
     expect(container.querySelector('[data-series="weekly-volume-casey"]')).not.toBeNull();
     expect(container.textContent).toContain("Family strength");
     expect(container.textContent).toContain("Overall strength score over time on the same time axis.");
+    const strengthPanel = container.querySelector(".family-strength-panel");
+    const weeklyPanel = container.querySelector(".family-weekly-panel");
+    expect(strengthPanel).not.toBeNull();
+    expect(weeklyPanel).not.toBeNull();
+    expect(strengthPanel!.compareDocumentPosition(weeklyPanel!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(container.querySelector('[data-chart="family-strength-score-overlay"]')).not.toBeNull();
     expect(container.querySelector('[data-chart="family-strength-score-bars"]')).toBeNull();
     expect(container.querySelector('[data-series="strength-score-taylor"]')).not.toBeNull();
@@ -290,6 +306,15 @@ describe("DashboardApp", () => {
     expect(container.querySelector('[data-series="strength-score-taylor"]')?.tagName.toLowerCase()).toBe("path");
     expect(container.textContent).toContain("Taylor 520");
     expect(container.textContent).toContain("Casey 480");
+    expect(Array.from(container.querySelectorAll(".family-weekly-axis-row span")).map((span) => span.textContent)).toEqual([
+      "2025-W01",
+      "2026-W20"
+    ]);
+    expect(Array.from(container.querySelectorAll(".family-strength-axis-row span")).map((span) => span.textContent)).toEqual([
+      "2025-W01",
+      "2026-W20"
+    ]);
+    expect(container.querySelector('[data-series="strength-score-taylor"]')?.textContent).not.toContain("0 strength score");
 
     const thisWeekTab = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("This week"));
     await act(async () => {
@@ -302,6 +327,15 @@ describe("DashboardApp", () => {
     expect(weeklyRows[0].textContent).toContain("↑ 1");
     expect(weeklyRows[1].textContent).toContain("Taylor");
     expect(weeklyRows[1].textContent).toContain("↓ 1");
+    expect(Array.from(container.querySelectorAll(".family-weekly-axis-row span")).map((span) => span.textContent)).toEqual([
+      "2026-W20",
+      "2026-W20"
+    ]);
+    expect(Array.from(container.querySelectorAll(".family-strength-axis-row span")).map((span) => span.textContent)).toEqual([
+      "2026-W20",
+      "2026-W20"
+    ]);
+    expect(container.querySelector('[data-series="strength-score-taylor"]')?.textContent).toContain("520 strength score");
 
     const fairnessTab = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Fairness adjusted"));
     await act(async () => {

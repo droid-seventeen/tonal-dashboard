@@ -87,7 +87,7 @@ The public dashboard also requests `/api/avatars`. If Blob is not configured, th
 To upload avatars, open the dashboard with the hidden hash route:
 
 ```text
-https://your-dashboard.example/#minda
+https://your-dashboard.example/#nimda
 ```
 
 Enter the `AVATAR_ADMIN_TOKEN`, choose a configured Tonal member, and upload a jpeg, png, webp, or gif under 1 MB. SVG files are rejected. Uploaded images are public because they render on the public dashboard.
@@ -96,7 +96,7 @@ Enter the `AVATAR_ADMIN_TOKEN`, choose a configured Tonal member, and upload a j
 
 - The dashboard itself is intentionally public; anyone with the URL can view the summarized family stats.
 - Tonal refresh tokens are stored only in server-side environment variables.
-- Avatar upload auth uses only the server-side `AVATAR_ADMIN_TOKEN`; the normal dashboard does not expose the upload panel unless the client hash is `#minda`.
+- Avatar upload auth uses only the server-side `AVATAR_ADMIN_TOKEN`; the normal dashboard does not expose the upload panel unless the client hash is `#nimda`.
 - Uploaded avatar images are public Vercel Blob URLs.
 - API responses sent to the browser are dashboard summaries, not the raw token bundle.
 - Prefer refresh tokens over storing Tonal account passwords in Vercel.
