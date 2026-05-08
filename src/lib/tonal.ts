@@ -4,6 +4,7 @@ import { AllTimeStats, groupActivitiesByWeek, normalizeStrengthScores, summarize
 const AUTH0_CLIENT_ID = "ERCyexW-xoVG_Yy3RDe-eV4xsOnRHP6L";
 const AUTH0_TOKEN_URL = "https://tonal.auth0.com/oauth/token";
 const TONAL_API_BASE = "https://api.tonal.com";
+const RECENT_WORKOUT_DETAIL_LIMIT = 5;
 
 type TokenBundle = {
   id_token: string;
@@ -21,6 +22,7 @@ export type TonalDashboard = {
   topReady: [string, number][];
   allTime: AllTimeStats;
   activities: TonalActivity[];
+  recentWorkoutDetails: TonalWorkoutDetail[];
   weeklyVolume: ReturnType<typeof groupActivitiesByWeek>;
   errors: string[];
 };
@@ -57,6 +59,52 @@ export type TonalWorkoutActivity = {
   totalWork?: number;
 };
 
+export type TonalWorkoutDetail = {
+  activityId: string;
+  name?: string;
+  coachName?: string | null;
+  targetArea?: string | null;
+  duration?: number;
+  timeUnderTension?: number;
+  totalReps?: number;
+  totalSets?: number;
+  totalVolume?: number;
+  totalWork?: number;
+  workoutType?: string;
+  level?: string;
+  movementSets: TonalMovementSummary[];
+};
+
+export type TonalMovementSummary = {
+  movementName?: string;
+  totalVolume?: number;
+  totalWork?: number;
+  sets?: TonalMovementSetSummary[];
+};
+
+export type TonalMovementSetSummary = {
+  repCount?: number;
+  repGoal?: number;
+  weight?: number;
+  avgMaxWeight?: number;
+  oneRepMax?: number;
+  maxConPower?: number;
+  totalVolume?: number;
+  totalWork?: number;
+  warmUp?: boolean;
+  weightPercentage?: number;
+  suggestedWeightChange?: number;
+  spotterMode?: string;
+  duration?: number;
+  burnout?: boolean;
+  dropSet?: boolean;
+};
+
+type TonalFormattedWorkoutSummary = Omit<TonalWorkoutDetail, "activityId" | "totalSets" | "movementSets"> & {
+  id?: string;
+  movementSets?: TonalMovementSummary[];
+};
+
 type UserInfo = { id?: string; sub?: string; userId?: string };
 
 const tokenCache = new Map<string, { token: string; expiresAt: number; refreshToken?: string }>();
@@ -84,8 +132,11 @@ export async function getFamilyDashboard(member: TonalMember): Promise<TonalDash
   const workoutActivitySummaries = workoutActivities
     .map(workoutActivityToActivity)
     .sort((a, b) => new Date(b.activityTime ?? 0).getTime() - new Date(a.activityTime ?? 0).getTime());
-  const displayActivities = activities.length ? activities : workoutActivitySummaries.slice(0, 20);
+  const displayActivities = activities.length
+    ? [...activities].sort((a, b) => new Date(b.activityTime ?? 0).getTime() - new Date(a.activityTime ?? 0).getTime())
+    : workoutActivitySummaries.slice(0, 20);
   const readiness = readinessRaw && !Array.isArray(readinessRaw) ? readinessRaw : {};
+  const recentWorkoutDetails = await getRecentWorkoutDetails(client, userId, displayActivities, errors);
 
   return {
     member: { id: member.id, name: member.name },
@@ -96,8 +147,75 @@ export async function getFamilyDashboard(member: TonalMember): Promise<TonalDash
     topReady: topReadyMuscles(readiness),
     allTime: summarizeAllTimeStats(workoutActivities),
     activities: displayActivities,
+    recentWorkoutDetails,
     weeklyVolume: groupActivitiesByWeek(workoutActivitySummaries.length ? workoutActivitySummaries : displayActivities),
     errors
+  };
+}
+
+async function getRecentWorkoutDetails(
+  client: TonalClient,
+  userId: string,
+  activities: TonalActivity[],
+  errors: string[]
+): Promise<TonalWorkoutDetail[]> {
+  const detailRequests = activities
+    .filter((activity): activity is TonalActivity & { activityId: string } => Boolean(activity.activityId))
+    .slice(0, RECENT_WORKOUT_DETAIL_LIMIT)
+    .map(async (activity) => {
+      const summary = await client.get<TonalFormattedWorkoutSummary>(
+        `/v6/formatted/users/${userId}/workout-summaries/${activity.activityId}`
+      );
+      return normalizeWorkoutDetail(activity.activityId, summary);
+    });
+
+  const settled = await Promise.allSettled(detailRequests);
+  const details: TonalWorkoutDetail[] = [];
+  for (const result of settled) {
+    if (result.status === "fulfilled") details.push(result.value);
+    else noteError(errors, "recent workout details", result.reason);
+  }
+  return details;
+}
+
+function normalizeWorkoutDetail(activityId: string, summary: TonalFormattedWorkoutSummary): TonalWorkoutDetail {
+  const movementSets = (summary.movementSets ?? []).map((movement) => ({
+    movementName: movement.movementName,
+    totalVolume: movement.totalVolume,
+    totalWork: movement.totalWork,
+    sets: movement.sets?.map((set) => ({
+      repCount: set.repCount,
+      repGoal: set.repGoal,
+      weight: set.weight,
+      avgMaxWeight: set.avgMaxWeight,
+      oneRepMax: set.oneRepMax,
+      maxConPower: set.maxConPower,
+      totalVolume: set.totalVolume,
+      totalWork: set.totalWork,
+      warmUp: set.warmUp,
+      weightPercentage: set.weightPercentage,
+      suggestedWeightChange: set.suggestedWeightChange,
+      spotterMode: set.spotterMode,
+      duration: set.duration,
+      burnout: set.burnout,
+      dropSet: set.dropSet
+    }))
+  }));
+
+  return {
+    activityId,
+    name: summary.name,
+    coachName: summary.coachName,
+    targetArea: summary.targetArea,
+    duration: summary.duration,
+    timeUnderTension: summary.timeUnderTension,
+    totalReps: summary.totalReps,
+    totalSets: movementSets.reduce((sum, movement) => sum + (movement.sets?.length ?? 0), 0),
+    totalVolume: summary.totalVolume,
+    totalWork: summary.totalWork,
+    workoutType: summary.workoutType,
+    level: summary.level,
+    movementSets
   };
 }
 

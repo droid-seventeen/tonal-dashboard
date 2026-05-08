@@ -71,4 +71,118 @@ describe("DashboardApp", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(fetch).toHaveBeenLastCalledWith("/api/dashboard");
   });
+
+  it("turns detailed Tonal workout summaries into a movement fingerprint", async () => {
+    window.history.replaceState(null, "", "/#member-taylor");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          configured: true,
+          members: [
+            {
+              member: { id: "taylor", name: "Taylor" },
+              fetchedAt: "2026-04-18T15:00:00.000Z",
+              strength: { overall: 501, upper: 525, core: 489, lower: 490 },
+              readiness: {},
+              topReady: [],
+              allTime: {
+                totalVolume: 120000,
+                totalWorkouts: 20,
+                totalReps: 2400,
+                totalDuration: 72000,
+                firstWorkoutAt: "2026-01-16T14:56:59.552567Z"
+              },
+              weeklyVolume: [],
+              activities: [
+                {
+                  activityId: "workout-1",
+                  activityTime: "2026-04-18T14:38:08.264564Z",
+                  activityType: "DailyLift",
+                  workoutPreview: {
+                    workoutTitle: "DailyLift",
+                    targetArea: "Upper Body",
+                    totalDuration: 3600,
+                    totalVolume: 3774
+                  }
+                }
+              ],
+              recentWorkoutDetails: [
+                {
+                  activityId: "workout-1",
+                  name: "Taylor's Daily Lift",
+                  targetArea: "UPPER BODY",
+                  duration: 3600,
+                  timeUnderTension: 598,
+                  totalReps: 106,
+                  totalSets: 36,
+                  totalVolume: 3774,
+                  totalWork: 11506,
+                  level: "INTERMEDIATE",
+                  movementSets: [
+                    {
+                      movementName: "Wide Grip Barbell Bench Press",
+                      totalVolume: 1400,
+                      totalWork: 4300,
+                      sets: [
+                        {
+                          repCount: 10,
+                          repGoal: 10,
+                          weight: 26,
+                          oneRepMax: 35,
+                          maxConPower: 2111,
+                          suggestedWeightChange: 1,
+                          spotterMode: "SPOTTER",
+                          totalVolume: 260,
+                          duration: 40
+                        }
+                      ]
+                    },
+                    {
+                      movementName: "Reverse Grip Triceps Extension",
+                      totalVolume: 900,
+                      sets: [{ repCount: 12, repGoal: 12, weight: 18, totalVolume: 216, duration: 32 }]
+                    }
+                  ]
+                }
+              ],
+              errors: []
+            }
+          ]
+        })
+      })
+    );
+
+    await act(async () => {
+      root.render(<DashboardApp />);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain("Workout DNA");
+    expect(container.textContent).toContain("Movement fingerprint");
+    expect(container.textContent).toContain("Taylor's Daily Lift");
+    expect(container.textContent).toContain("Wide Grip Barbell Bench Press");
+    expect(container.textContent).toContain("Reverse Grip Triceps Extension");
+    expect(container.textContent).toContain("Tension density");
+    expect(container.textContent).toContain("379 lb/min");
+    expect(container.textContent).toContain("36 sets");
+    expect(container.textContent).toContain("106 reps");
+    expect(container.textContent).toContain("Peak 26 lb");
+    expect(container.textContent).toContain("1RM 35 lb");
+    expect(container.textContent).toContain("2,111 W");
+    expect(container.textContent).toContain("+1 next time");
+
+    const backLink = container.querySelector(".back-button");
+    await act(async () => {
+      backLink?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+
+    expect(window.location.hash).toBe("");
+    expect(container.textContent).toContain("All-time leaderboard");
+  });
 });

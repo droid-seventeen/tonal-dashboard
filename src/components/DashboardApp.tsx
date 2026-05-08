@@ -22,6 +22,9 @@ type ApiPayload = {
 };
 
 type View = "leaderboard" | "detail";
+type RecentWorkoutDetail = TonalDashboard["recentWorkoutDetails"][number];
+type RecentMovement = RecentWorkoutDetail["movementSets"][number];
+type RecentSet = NonNullable<RecentMovement["sets"]>[number];
 
 export default function DashboardApp() {
   const [payload, setPayload] = useState<ApiPayload | null>(null);
@@ -104,7 +107,7 @@ export default function DashboardApp() {
         ) : null}
 
         {payload && view === "detail" && selectedMember ? (
-          <MemberDashboard data={selectedMember} onBack={() => setView("leaderboard")} />
+          <MemberDashboard data={selectedMember} onBack={navigateToLeaderboard} />
         ) : null}
       </section>
     </main>
@@ -158,7 +161,7 @@ function LeaderboardView({
 
         <div className="leader-list">
           {leaderboard.map((member) => (
-            <a className="leader-row" href={`#member-${encodeURIComponent(member.member.id)}`} key={member.member.id} onClick={() => onOpenMember(member.member.id)}>
+            <a className="leader-row" href={`#member-${encodeURIComponent(member.member.id)}`} key={member.member.id} onClick={(event) => { event.preventDefault(); onOpenMember(member.member.id); }}>
               <span className="leader-rank">#{member.rank}</span>
               <span className="leader-avatar">{initials(member.member.name)}</span>
               <span className="leader-main">
@@ -182,6 +185,11 @@ function LeaderboardView({
 function MemberDashboard({ data, onBack }: { data: TonalDashboard & { rank: number }; onBack: () => void }) {
   const maxWeekVolume = Math.max(1, ...data.weeklyVolume.map((week) => week.volume));
   const recentActivities = data.activities.slice(0, 8);
+  const recentWorkoutCards = recentActivities.slice(0, 5);
+  const detailsByActivity = useMemo(
+    () => new Map((data.recentWorkoutDetails ?? []).map((detail) => [detail.activityId, detail])),
+    [data.recentWorkoutDetails]
+  );
   return (
     <section className="detail-page">
       <a className="back-button" href="#" onClick={(event) => { event.preventDefault(); onBack(); }}><ArrowLeft size={16} /> Back to leaderboard</a>
@@ -256,27 +264,22 @@ function MemberDashboard({ data, onBack }: { data: TonalDashboard & { rank: numb
       </div>
 
       <section className="panel workouts-panel">
-        <div className="panel-heading"><h2>Recent workouts</h2><span>Latest 8</span></div>
-        <div className="workout-list">
-          {recentActivities.length ? (
-            <div className="workout-row workout-header">
-              <span>Date</span>
-              <span>Workout</span>
-              <span>Type</span>
-              <span>Duration</span>
-              <span>Volume</span>
-            </div>
-          ) : null}
-          {recentActivities.map((activity) => (
-            <div className="workout-row" key={activity.activityId ?? activity.activityTime}>
-              <span className="workout-date">{activity.activityTime ? formatDate(activity.activityTime) : "—"}</span>
-              <span className="workout-title">{activity.workoutPreview?.workoutTitle ?? activity.activityType ?? "Workout"}</span>
-              <span>{activity.workoutPreview?.targetArea ?? "—"}</span>
-              <span>{formatDuration(activity.workoutPreview?.totalDuration)}</span>
-              <strong>{formatNumber(activity.workoutPreview?.totalVolume)} lb</strong>
-            </div>
+        <div className="panel-heading workout-dna-heading">
+          <div>
+            <h2>Workout DNA</h2>
+            <p>Movement fingerprint cards built from Tonal&apos;s formatted per-movement summaries.</p>
+          </div>
+          <span>Latest {recentWorkoutCards.length || 0}</span>
+        </div>
+        <div className="workout-dna-grid">
+          {recentWorkoutCards.map((activity) => (
+            <WorkoutDnaCard
+              activity={activity}
+              detail={activity.activityId ? detailsByActivity.get(activity.activityId) : undefined}
+              key={activity.activityId ?? activity.activityTime}
+            />
           ))}
-          {!recentActivities.length ? <Empty text="No recent workouts returned." /> : null}
+          {!recentWorkoutCards.length ? <Empty text="No recent workouts returned." /> : null}
         </div>
       </section>
     </section>
@@ -289,6 +292,118 @@ function LeagueStat({ label, value, suffix }: { label: string; value: string; su
 
 function MetricCard({ icon, label, value, suffix }: { icon: React.ReactNode; label: string; value: string; suffix?: string }) {
   return <div className="metric-card"><span className="metric-icon">{icon}</span><span>{label}</span><strong>{value}{suffix ? <em> {suffix}</em> : null}</strong></div>;
+}
+
+function WorkoutDnaCard({
+  activity,
+  detail
+}: {
+  activity: TonalDashboard["activities"][number];
+  detail?: RecentWorkoutDetail;
+}) {
+  const title = detail?.name ?? activity.workoutPreview?.workoutTitle ?? activity.activityType ?? "Workout";
+  const targetArea = prettifyLabel(detail?.targetArea ?? activity.workoutPreview?.targetArea ?? activity.activityType);
+  const duration = detail?.duration ?? activity.workoutPreview?.totalDuration;
+  const tensionTime = detail?.timeUnderTension;
+  const densitySeconds = tensionTime && tensionTime > 0 ? tensionTime : duration;
+  const totalVolume = detail?.totalVolume ?? activity.workoutPreview?.totalVolume;
+  const density = totalVolume && densitySeconds ? Math.round(totalVolume / (densitySeconds / 60)) : undefined;
+  const movements = topMovements(detail);
+  const maxMovementVolume = Math.max(1, ...movements.map((movement) => movement.totalVolume ?? 0));
+  const totalSets = detail?.totalSets || countSets(detail);
+  const bestSet = findBestSet(detail);
+  const suggestedWeightChange = maxSuggestedWeightChange(detail);
+  const signalChips = [
+    totalSets ? `${formatNumber(totalSets)} sets` : null,
+    detail?.totalReps ? `${formatNumber(detail.totalReps)} reps` : null,
+    bestSet?.weight ? `Peak ${formatNumber(bestSet.weight)} lb` : null,
+    bestSet?.oneRepMax ? `1RM ${formatNumber(bestSet.oneRepMax)} lb` : null,
+    bestSet?.maxConPower ? `${formatNumber(bestSet.maxConPower)} W` : null,
+    suggestedWeightChange ? `+${formatNumber(suggestedWeightChange)} next time` : null,
+    detail?.level ? prettifyLabel(detail.level) : null
+  ].filter((signal): signal is string => Boolean(signal));
+
+  return (
+    <article className="workout-dna-card">
+      <div className="dna-card-topline">
+        <span>{activity.activityTime ? formatDate(activity.activityTime) : "Recent"}</span>
+        <span>{targetArea}</span>
+      </div>
+      <h3>{title}</h3>
+      <div className="dna-stat-grid">
+        <DnaStat label="Volume" value={`${formatNumber(totalVolume)} lb`} />
+        <DnaStat label="Tension density" value={density ? `${formatNumber(density)} lb/min` : "—"} />
+        <DnaStat label="Time under tension" value={formatDuration(tensionTime ?? duration)} />
+      </div>
+
+      <div className="movement-fingerprint">
+        <div className="movement-fingerprint-heading">
+          <span>Movement fingerprint</span>
+          <strong>{detail?.totalWork ? `${formatNumber(detail.totalWork)} work` : detail ? "Per-movement" : "Summary only"}</strong>
+        </div>
+        {movements.length ? (
+          <div className="movement-stack">
+            {movements.map((movement) => (
+              <div className="movement-row" key={movement.movementName ?? movement.totalVolume}>
+                <div>
+                  <span>{movement.movementName ?? "Movement"}</span>
+                  <strong>{formatNumber(movement.totalVolume)} lb</strong>
+                </div>
+                <div className="bar-track">
+                  <div style={{ width: `${Math.max(7, ((movement.totalVolume ?? 0) / maxMovementVolume) * 100)}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="movement-empty">Detailed movement data was not returned for this workout.</div>
+        )}
+      </div>
+
+      {signalChips.length ? (
+        <div className="dna-signal-row">
+          {signalChips.map((signal) => <span key={signal}>{signal}</span>)}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function DnaStat({ label, value }: { label: string; value: string }) {
+  return <div className="dna-stat"><span>{label}</span><strong>{value}</strong></div>;
+}
+
+function topMovements(detail?: RecentWorkoutDetail): RecentMovement[] {
+  return [...(detail?.movementSets ?? [])]
+    .filter((movement) => movement.movementName || movement.totalVolume)
+    .sort((a, b) => (b.totalVolume ?? 0) - (a.totalVolume ?? 0))
+    .slice(0, 4);
+}
+
+function countSets(detail?: RecentWorkoutDetail): number | undefined {
+  const count = detail?.movementSets.reduce((sum, movement) => sum + (movement.sets?.length ?? 0), 0) ?? 0;
+  return count || undefined;
+}
+
+function findBestSet(detail?: RecentWorkoutDetail): RecentSet | undefined {
+  return detail?.movementSets
+    .flatMap((movement) => movement.sets ?? [])
+    .sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0) || (b.oneRepMax ?? 0) - (a.oneRepMax ?? 0))[0];
+}
+
+function maxSuggestedWeightChange(detail?: RecentWorkoutDetail): number | undefined {
+  const suggestion = Math.max(0, ...((detail?.movementSets.flatMap((movement) => movement.sets ?? []) ?? []).map((set) => set.suggestedWeightChange ?? 0)));
+  return suggestion || undefined;
+}
+
+function prettifyLabel(value?: string | null): string {
+  if (!value) return "Workout";
+  return value
+    .toLowerCase()
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map((word) => word[0].toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 function StrengthDial({ label, value, featured = false }: { label: string; value?: number; featured?: boolean }) {

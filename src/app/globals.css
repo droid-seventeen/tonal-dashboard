@@ -188,13 +188,48 @@ em { color: var(--muted); font-style: normal; font-size: .55em; letter-spacing: 
 .muscle-tile span { display: block; color: var(--muted); font-size: 11px; }
 .muscle-tile strong { display: block; margin-top: 8px; font-size: 22px; font-weight: 510; letter-spacing: -0.04em; }
 .workouts-panel { overflow: hidden; }
-.workout-list { display: grid; }
-.workout-row { display: grid; grid-template-columns: 120px minmax(220px, 1fr) 130px 90px 110px; gap: 14px; align-items: center; min-height: 54px; border-top: 1px solid var(--border-soft); color: #d0d6e0; font-size: 13px; }
-.workout-header { min-height: 36px; color: var(--subtle); font-size: 11px; font-weight: 590; letter-spacing: .08em; text-transform: uppercase; }
-.workout-header span:last-child { text-align: right; }
-.workout-title { color: var(--text); font-weight: 510; }
-.workout-date { color: var(--muted); }
-.workout-row strong { text-align: right; color: var(--text); font-weight: 510; }
+.panel-heading p { margin: 5px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.workout-dna-heading { align-items: flex-start; }
+.workout-dna-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.workout-dna-card {
+  position: relative;
+  display: grid;
+  gap: 16px;
+  min-height: 360px;
+  overflow: hidden;
+  border: 1px solid var(--border-soft);
+  border-radius: 20px;
+  padding: 18px;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(113,112,255,.17), transparent 38%),
+    linear-gradient(180deg, rgba(255,255,255,.048), rgba(255,255,255,.022));
+}
+.workout-dna-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(135deg, rgba(255,255,255,.075), transparent 22%, transparent 72%, rgba(16,185,129,.06));
+  opacity: .8;
+}
+.workout-dna-card > * { position: relative; z-index: 1; }
+.dna-card-topline, .movement-fingerprint-heading, .movement-row > div:first-child, .dna-signal-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dna-card-topline span:first-child { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.dna-card-topline span:last-child { border: 1px solid rgba(113,112,255,.24); border-radius: 999px; padding: 5px 8px; color: #d8d7ff; background: rgba(113,112,255,.1); font-size: 11px; font-weight: 590; letter-spacing: .06em; text-transform: uppercase; }
+.workout-dna-card h3 { margin: 0; font-size: clamp(22px, 3vw, 34px); font-weight: 510; line-height: 1; letter-spacing: -0.05em; }
+.dna-stat-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.dna-stat { min-height: 76px; border: 1px solid var(--border-soft); border-radius: 15px; padding: 12px; background: rgba(0,0,0,.16); }
+.dna-stat span, .movement-fingerprint-heading span { display: block; color: var(--subtle); font-size: 10px; font-weight: 590; letter-spacing: .08em; text-transform: uppercase; }
+.dna-stat strong { display: block; margin-top: 9px; font-size: 20px; font-weight: 510; letter-spacing: -0.04em; }
+.movement-fingerprint { display: grid; gap: 10px; border: 1px solid rgba(255,255,255,.06); border-radius: 16px; padding: 12px; background: rgba(0,0,0,.13); }
+.movement-fingerprint-heading strong { color: var(--gold); font-size: 12px; font-weight: 510; }
+.movement-stack { display: grid; gap: 10px; }
+.movement-row { display: grid; gap: 6px; }
+.movement-row span { min-width: 0; overflow: hidden; color: #d0d6e0; font-size: 12px; font-weight: 510; text-overflow: ellipsis; white-space: nowrap; }
+.movement-row strong { color: var(--muted); font-size: 12px; font-weight: 510; }
+.movement-empty { border: 1px dashed var(--border); border-radius: 12px; padding: 14px; color: var(--muted); font-size: 12px; text-align: center; }
+.dna-signal-row { justify-content: flex-start; flex-wrap: wrap; }
+.dna-signal-row span { border: 1px solid rgba(16,185,129,.18); border-radius: 999px; padding: 6px 9px; color: #b8f4d7; background: rgba(16,185,129,.08); font-size: 12px; }
 
 .notice { border: 1px solid rgba(113,112,255,.22); border-radius: 16px; padding: 14px 16px; background: rgba(113,112,255,.1); color: #dfdeff; }
 .notice-error { border-color: rgba(255,107,138,.28); background: rgba(255,107,138,.1); color: #ffd7df; }
@@ -208,8 +243,7 @@ em { color: var(--muted); font-style: normal; font-size: .55em; letter-spacing: 
   .league-strip, .metric-grid { grid-template-columns: 1fr 1fr; }
   .strength-grid { grid-template-columns: 1fr 1fr; }
   .readiness-matrix { grid-template-columns: 1fr 1fr; }
-  .workout-row { grid-template-columns: 110px minmax(220px, 1fr) 100px 80px 100px; min-width: 720px; }
-  .workout-list { overflow-x: auto; }
+  .workout-dna-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 640px) {
