@@ -2,13 +2,10 @@
 
 import {
   ArrowLeft,
-  CalendarDays,
   ChevronRight,
-  Dumbbell,
   Medal,
   Trophy,
-  Users,
-  Zap
+  Users
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -96,7 +93,7 @@ export default function DashboardApp() {
   useEffect(() => {
     function syncFromHash() {
       const hash = window.location.hash;
-      setShowAvatarAdmin(hash === "#minda");
+      setShowAvatarAdmin(hash === "#nimda");
       const memberId = decodeURIComponent(hash.replace(/^#member-/, ""));
       if (memberId && hash.startsWith("#member-")) {
         setSelected(memberId);
@@ -201,6 +198,7 @@ function LeaderboardView({
   const totalFamilyVolume = leaderboard.reduce((sum, member) => sum + member.allTime.totalVolume, 0);
   const totalFamilyWorkouts = leaderboard.reduce((sum, member) => sum + member.allTime.totalWorkouts, 0);
   const familyWeeklyPeak = Math.max(0, ...leaderboard.flatMap((member) => member.weeklyVolume.map((week) => week.volume)));
+  const familyStrengthPeak = Math.max(0, ...leaderboard.map((member) => member.strength.overall ?? 0));
 
   return (
     <section className="leaderboard-page">
@@ -291,6 +289,17 @@ function LeaderboardView({
         </div>
         <FamilyWeeklyVolumeOverlay members={leaderboard} />
       </section>
+
+      <section className="panel family-strength-panel">
+        <div className="panel-heading trend-heading">
+          <div>
+            <h2>Family strength</h2>
+            <p>Current overall Tonal strength score for each person.</p>
+          </div>
+          <span>{familyStrengthPeak ? `${formatNumber(familyStrengthPeak)} top score` : "No strength data"}</span>
+        </div>
+        <FamilyStrengthScoreBars members={leaderboard} />
+      </section>
     </section>
   );
 }
@@ -332,14 +341,15 @@ function MemberDashboard({ avatarUrl, data, onBack }: { avatarUrl?: string; data
         </div>
       </div>
 
-      <div className="metric-grid">
-        <MetricCard icon={<Trophy size={17} />} label="All-time volume" value={formatNumber(data.allTime.totalVolume)} suffix="lb" />
-        <MetricCard icon={<Dumbbell size={17} />} label="Workouts" value={formatNumber(data.allTime.totalWorkouts)} />
-        <MetricCard icon={<Zap size={17} />} label="Total reps" value={formatNumber(data.allTime.totalReps)} />
-        <MetricCard icon={<CalendarDays size={17} />} label="Time trained" value={formatDuration(data.allTime.totalDuration)} />
-      </div>
+      <section className="panel readiness-panel" data-section="muscle-readiness">
+        <div className="panel-heading"><h2>Muscle readiness</h2><span>{Object.keys(data.readiness).length} muscles tracked</span></div>
+        <BodyReadinessDiagram readiness={data.readiness} />
+      </section>
 
-      <MemberInsightPanels data={data} insights={detailInsights} />
+      <div className="strength-style-row" data-section="strength-style-row">
+        <StrengthScorePanel data={data} />
+        <TrainingStylePanel insights={detailInsights} />
+      </div>
 
       <div className="trend-grid">
         <section className="panel trend-panel">
@@ -379,25 +389,11 @@ function MemberDashboard({ avatarUrl, data, onBack }: { avatarUrl?: string; data
         </section>
       </div>
 
-      <div className="detail-grid">
-        <section className="panel strength-panel">
-          <div className="panel-heading"><h2>Strength score</h2><span>Current</span></div>
-          <div className="strength-grid">
-            <StrengthDial label="Overall" value={data.strength.overall} featured />
-            <StrengthDial label="Upper" value={data.strength.upper} />
-            <StrengthDial label="Core" value={data.strength.core} />
-            <StrengthDial label="Lower" value={data.strength.lower} />
-          </div>
-        </section>
-
-        <section className="panel readiness-panel">
-          <div className="panel-heading"><h2>Muscle readiness</h2><span>{Object.keys(data.readiness).length} muscles tracked</span></div>
-          <BodyReadinessDiagram readiness={data.readiness} />
-        </section>
-
+      <div className="member-insight-grid">
+        <PersonalRecordsPanel insights={detailInsights} />
       </div>
 
-      <section className="panel workouts-panel">
+      <section className="panel workouts-panel" data-section="workout-dna">
         <div className="panel-heading workout-dna-heading">
           <div>
             <h2>Workout DNA</h2>
@@ -416,6 +412,11 @@ function MemberDashboard({ avatarUrl, data, onBack }: { avatarUrl?: string; data
           {!recentWorkoutCards.length ? <Empty text="No recent workouts returned." /> : null}
         </div>
       </section>
+
+      <div className="lower-insight-grid">
+        <BestRecentWorkoutPanel insights={detailInsights} />
+        <FavoriteMovementsPanel insights={detailInsights} />
+      </div>
     </section>
   );
 }
@@ -570,67 +571,18 @@ function LeagueStat({ label, value, suffix }: { label: string; value: string; su
   return <div className="league-stat"><span>{label}</span><strong>{value}{suffix ? <em> {suffix}</em> : null}</strong></div>;
 }
 
-function MetricCard({ icon, label, value, suffix }: { icon: React.ReactNode; label: string; value: string; suffix?: string }) {
-  return <div className="metric-card"><span className="metric-icon">{icon}</span><span>{label}</span><strong>{value}{suffix ? <em> {suffix}</em> : null}</strong></div>;
-}
-
-function MemberInsightPanels({ data, insights }: { data: TonalDashboard; insights: MemberDetailInsights }) {
+function StrengthScorePanel({ data }: { data: TonalDashboard }) {
   return (
-    <div className="member-insight-grid">
-      <TrainingCalendarPanel insights={insights} memberName={data.member.name} />
-      <TrainingStylePanel insights={insights} />
-      <PersonalRecordsPanel insights={insights} />
-      <BestRecentWorkoutPanel insights={insights} />
-      <FavoriteMovementsPanel insights={insights} />
-      <BodyBalancePanel insights={insights} />
-    </div>
-  );
-}
-
-function TrainingCalendarPanel({ insights, memberName }: { insights: MemberDetailInsights; memberName: string }) {
-  const cells = calendarHeatmapCells(insights.calendar.days);
-
-  return (
-    <section className="panel training-calendar-panel" data-section="training-calendar">
-      <div className="panel-heading">
-        <div>
-          <h2>Training calendar</h2>
-          <p>Workout days shaded by daily volume from normalized Tonal history.</p>
-        </div>
-        <span>Recent days</span>
-      </div>
-      <div className="calendar-summary-row">
-        <CalendarSummaryStat label="Logged" value={`${formatNumber(insights.calendar.activeDays)} active days`} />
-        <CalendarSummaryStat label="Active streak" value={dayStreakLabel(insights.calendar.activeStreak)} />
-        <CalendarSummaryStat label="Best streak" value={dayStreakLabel(insights.calendar.longestStreak)} />
-      </div>
-      <div
-        aria-label={`${memberName} training calendar heatmap`}
-        className="calendar-heatmap"
-        data-chart="training-calendar-heatmap"
-        role="img"
-      >
-        {cells.map((cell) => (
-          <span
-            aria-label={cell.workouts ? `${cell.date}: ${formatNumber(cell.volume)} lb` : `${cell.date}: no workout`}
-            className="calendar-cell"
-            data-intensity={cell.intensity}
-            key={cell.date}
-            title={cell.workouts ? `${cell.date}: ${formatNumber(cell.volume)} lb, ${formatNumber(cell.workouts)} workout${cell.workouts === 1 ? "" : "s"}` : `${cell.date}: no workout`}
-          />
-        ))}
-      </div>
-      <div className="calendar-legend" aria-label="Training calendar intensity legend">
-        <span>Less</span>
-        {[0, 1, 2, 3, 4].map((level) => <i data-intensity={level} key={level} />)}
-        <span>More</span>
+    <section className="panel strength-panel" data-section="strength-score">
+      <div className="panel-heading"><h2>Strength score</h2><span>Current</span></div>
+      <div className="strength-grid">
+        <StrengthDial label="Overall" value={data.strength.overall} featured />
+        <StrengthDial label="Upper" value={data.strength.upper} />
+        <StrengthDial label="Core" value={data.strength.core} />
+        <StrengthDial label="Lower" value={data.strength.lower} />
       </div>
     </section>
   );
-}
-
-function CalendarSummaryStat({ label, value }: { label: string; value: string }) {
-  return <div className="calendar-summary-stat"><span>{label}</span><strong>{value}</strong></div>;
 }
 
 function PersonalRecordsPanel({ insights }: { insights: MemberDetailInsights }) {
@@ -691,32 +643,6 @@ function FavoriteMovementsPanel({ insights }: { insights: MemberDetailInsights }
   );
 }
 
-function BodyBalancePanel({ insights }: { insights: MemberDetailInsights }) {
-  return (
-    <section className="panel body-balance-panel" data-section="body-balance-analysis">
-      <div className="panel-heading">
-        <div>
-          <h2>Body balance</h2>
-          <p>Workout distribution by target area from activities and formatted details.</p>
-        </div>
-        <span>Training mix</span>
-      </div>
-      <div className="body-balance-stack">
-        {insights.bodyBalance.map((segment) => (
-          <div className="body-balance-row" data-balance-area={segment.area} key={segment.area}>
-            <div>
-              <span>{segment.area}</span>
-              <em>{formatNumber(segment.workouts)} workout{segment.workouts === 1 ? "" : "s"} • {formatNumber(segment.volume)} lb</em>
-            </div>
-            <strong>{segment.percentage}%</strong>
-            <div className="bar-track"><div style={{ width: `${Math.max(segment.percentage ? 6 : 0, segment.percentage)}%` }} /></div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function TrainingStylePanel({ insights }: { insights: MemberDetailInsights }) {
   return (
     <section className="panel training-style-panel" data-section="training-style-profile">
@@ -724,7 +650,7 @@ function TrainingStylePanel({ insights }: { insights: MemberDetailInsights }) {
       <div className="style-profile-card">
         <span>Current read</span>
         <strong>{insights.trainingStyle.label}</strong>
-        <p>Derived from strength trend, training calendar, workout mix, and recent workout detail.</p>
+        <p>Derived from strength trend, workout rhythm, workout mix, and recent workout detail.</p>
         <div className="style-trait-row">
           {insights.trainingStyle.traits.map((trait) => <em key={trait}>{trait}</em>)}
         </div>
@@ -881,37 +807,6 @@ function findBestSet(detail?: RecentWorkoutDetail): RecentSet | undefined {
 function maxSuggestedWeightChange(detail?: RecentWorkoutDetail): number | undefined {
   const suggestion = Math.max(0, ...((detail?.movementSets.flatMap((movement) => movement.sets ?? []) ?? []).map((set) => set.suggestedWeightChange ?? 0)));
   return suggestion || undefined;
-}
-
-function calendarHeatmapCells(days: MemberDetailInsights["calendar"]["days"]): MemberDetailInsights["calendar"]["days"] {
-  const byDate = new Map(days.map((day) => [day.date, day]));
-  const latest = days.at(-1)?.date ? calendarDate(days.at(-1)!.date) : undefined;
-  const end = latest ?? new Date();
-  const endUtc = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
-
-  return Array.from({ length: 91 }, (_, index) => {
-    const date = new Date(endUtc);
-    date.setUTCDate(endUtc.getUTCDate() - (90 - index));
-    const key = calendarDateKey(date);
-    return byDate.get(key) ?? { date: key, workouts: 0, volume: 0, reps: 0, duration: 0, intensity: 0 };
-  });
-}
-
-function calendarDate(value: string): Date | undefined {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) return undefined;
-  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
-  return Number.isNaN(date.getTime()) ? undefined : date;
-}
-
-function calendarDateKey(date: Date): string {
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
-}
-
-function dayStreakLabel(streak: number): string {
-  if (streak <= 0) return "No day streak";
-  if (streak === 1) return "1-day streak";
-  return `${formatNumber(streak)}-day streak`;
 }
 
 function recordContext(record: NonNullable<MemberDetailInsights["records"][keyof MemberDetailInsights["records"]]>): string {
@@ -1090,6 +985,67 @@ function FamilyWeeklyVolumeOverlay({ members }: { members: RankedTonalMember[] }
             <i style={{ background: member.color }} />
             {member.name}
             <strong>{formatNumber(member.latest?.value ?? 0)} lb</strong>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FamilyStrengthScoreBars({ members }: { members: RankedTonalMember[] }) {
+  const bars = members
+    .map((member, index) => ({
+      id: member.member.id,
+      name: member.member.name,
+      color: FAMILY_SERIES_COLORS[index % FAMILY_SERIES_COLORS.length],
+      value: member.strength.overall
+    }))
+    .filter((member): member is { id: string; name: string; color: string; value: number } => typeof member.value === "number" && Number.isFinite(member.value));
+
+  if (!bars.length) return <Empty text="No overall strength scores returned yet." />;
+
+  const width = 760;
+  const height = 260;
+  const padding = 34;
+  const chartWidth = width - padding * 2;
+  const chartHeight = height - padding * 2;
+  const max = Math.max(1, ...bars.map((member) => member.value));
+  const range = Math.max(1, Math.ceil(max * 1.12));
+  const barSlot = chartWidth / bars.length;
+  const barWidth = Math.min(76, Math.max(34, barSlot * 0.48));
+  const baseY = height - padding;
+  const chartBars = bars.map((member, index) => {
+    const barHeight = (Math.max(0, member.value) / range) * chartHeight;
+    const x = padding + index * barSlot + (barSlot - barWidth) / 2;
+    const y = baseY - barHeight;
+    return { ...member, x, y, barHeight };
+  });
+
+  return (
+    <div className="family-strength-chart-wrap">
+      <svg aria-label="Family overall strength scores" className="family-strength-chart" data-chart="family-strength-score-bars" role="img" viewBox={`0 0 ${width} ${height}`}>
+        {[0, 1, 2, 3].map((line) => {
+          const y = padding + (line / 3) * chartHeight;
+          return <line className="trend-grid-line" key={line} x1={padding} x2={width - padding} y1={y} y2={y} />;
+        })}
+        {chartBars.map((member) => (
+          <g className="family-strength-bar-group" data-series={`strength-score-${member.id}`} key={member.id} style={{ "--series-color": member.color } as React.CSSProperties}>
+            <title>{member.name} {formatNumber(member.value)} strength score</title>
+            <rect className="family-strength-bar" height={Math.max(2, member.barHeight)} rx="12" width={barWidth} x={member.x} y={member.y} />
+            <text className="family-strength-value" x={member.x + barWidth / 2} y={member.y - 8}>{formatNumber(member.value)}</text>
+            <text className="family-strength-label" x={member.x + barWidth / 2} y={baseY + 20}>{member.name}</text>
+          </g>
+        ))}
+        <text className="trend-y-label" x={padding} y={padding - 10}>{formatNumber(range)}</text>
+        <text className="trend-y-label" x={padding} y={baseY + 18}>0</text>
+        <text className="trend-axis-label trend-axis-label-y" transform={`translate(13 ${height / 2}) rotate(-90)`}>Strength</text>
+        <text className="trend-axis-label trend-axis-label-x" x={width / 2} y={height - 5}>Person</text>
+      </svg>
+      <div className="family-strength-legend">
+        {chartBars.map((member) => (
+          <span data-series-legend={`strength-score-${member.id}`} key={member.id}>
+            <i style={{ background: member.color }} />
+            {member.name} <strong>{formatNumber(member.value)}</strong>
           </span>
         ))}
       </div>

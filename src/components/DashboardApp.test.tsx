@@ -95,7 +95,7 @@ describe("DashboardApp", () => {
     expect(container.querySelector('.athlete-hero [data-member-avatar="taylor"] img')?.getAttribute("src")).toBe("https://blob.example/taylor.png");
   });
 
-  it("only reveals avatar uploads behind the minda hash", async () => {
+  it("only reveals avatar uploads behind the nimda hash", async () => {
     await act(async () => {
       root.render(<DashboardApp />);
     });
@@ -110,6 +110,12 @@ describe("DashboardApp", () => {
     await act(async () => {
       window.dispatchEvent(new Event("hashchange"));
     });
+    expect(container.textContent).not.toContain("Avatar admin");
+
+    window.history.replaceState(null, "", "/#nimda");
+    await act(async () => {
+      window.dispatchEvent(new Event("hashchange"));
+    });
 
     expect(container.textContent).toContain("Avatar admin");
     expect(container.querySelector('input[name="avatarAdminToken"]')).not.toBeNull();
@@ -118,7 +124,7 @@ describe("DashboardApp", () => {
   });
 
   it("uploads an avatar from the hidden admin panel and updates the dashboard immediately", async () => {
-    window.history.replaceState(null, "", "/#minda");
+    window.history.replaceState(null, "", "/#nimda");
     const uploadUrl = "https://blob.example/avatars/casey.png";
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -273,6 +279,13 @@ describe("DashboardApp", () => {
     expect(container.querySelector('[data-chart="family-weekly-volume-overlay"]')).not.toBeNull();
     expect(container.querySelector('[data-series="weekly-volume-taylor"]')).not.toBeNull();
     expect(container.querySelector('[data-series="weekly-volume-casey"]')).not.toBeNull();
+    expect(container.textContent).toContain("Family strength");
+    expect(container.textContent).toContain("Current overall Tonal strength score for each person.");
+    expect(container.textContent).toContain("Taylor 520");
+    expect(container.textContent).toContain("Casey 480");
+    expect(container.querySelector('[data-chart="family-strength-score-bars"]')).not.toBeNull();
+    expect(container.querySelector('[data-series="strength-score-taylor"]')).not.toBeNull();
+    expect(container.querySelector('[data-series="strength-score-casey"]')).not.toBeNull();
 
     const thisWeekTab = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("This week"));
     await act(async () => {
@@ -503,8 +516,8 @@ describe("DashboardApp", () => {
     expect(container.textContent).toContain("Rank #1");
     expect(container.textContent).toContain("All-time volume");
     expect(container.textContent).toContain("120,000");
-    expect(container.textContent).toContain("Workouts");
-    expect(container.textContent).toContain("Time trained");
+    expect(container.querySelector(".metric-grid")).toBeNull();
+    expect(container.textContent).not.toContain("Time trained");
     expect(container.textContent).toContain("Workout DNA");
     expect(container.textContent).toContain("Movement telemetry");
     expect(container.textContent).toContain("Taylor's Daily Lift");
@@ -529,7 +542,7 @@ describe("DashboardApp", () => {
     expectNoRaceMetaphor(container);
   });
 
-  it("renders member detail training calendar, records, favorites, balance, style, and recent highlights", async () => {
+  it("renders member detail page with readiness and strength/style prioritized above lower workout insights", async () => {
     window.history.replaceState(null, "", "/#member-taylor");
     vi.stubGlobal(
       "fetch",
@@ -547,8 +560,20 @@ describe("DashboardApp", () => {
                 { activityTime: "2026-04-01T12:00:00Z", overall: 500 },
                 { activityTime: "2026-05-01T12:00:00Z", overall: 535 }
               ],
-              readiness: {},
-              topReady: [],
+              readiness: {
+                Chest: 92,
+                Shoulders: 74,
+                Back: 81,
+                Triceps: 66,
+                Biceps: 58,
+                Abs: 88,
+                Obliques: 42,
+                Quads: 38,
+                Glutes: 71,
+                Hamstrings: 83,
+                Calves: 97
+              },
+              topReady: [["Calves", 97], ["Chest", 92], ["Abs", 88], ["Hamstrings", 83]],
               allTime: { totalVolume: 14800, totalWorkouts: 3, totalReps: 262, totalDuration: 6300, firstWorkoutAt: "2026-05-01T10:00:00Z" },
               weeklyVolume: [{ week: "2026-W18", workouts: 3, volume: 14800 }],
               calendarDays: [
@@ -642,21 +667,55 @@ describe("DashboardApp", () => {
     });
 
     for (const section of [
-      "training-calendar",
-      "personal-records",
-      "favorite-movements",
-      "body-balance-analysis",
+      "muscle-readiness",
+      "strength-score",
       "training-style-profile",
-      "best-recent-workout"
+      "personal-records",
+      "best-recent-workout",
+      "favorite-movements",
+      "workout-dna"
     ]) {
       expect(container.querySelector(`[data-section="${section}"]`)).not.toBeNull();
     }
 
-    expect(container.querySelector('[data-chart="training-calendar-heatmap"]')).not.toBeNull();
-    expect(container.querySelector('[aria-label="Taylor training calendar heatmap"]')).not.toBeNull();
-    expect(container.textContent).toContain("Training calendar");
-    expect(container.textContent).toContain("3 active days");
-    expect(container.textContent).toContain("3-day streak");
+    expect(container.querySelector(".metric-grid")).toBeNull();
+    expect(container.textContent).not.toContain("Total reps");
+    expect(container.textContent).not.toContain("Time trained");
+    expect(container.querySelector('[data-section="training-calendar"]')).toBeNull();
+    expect(container.querySelector('[data-chart="training-calendar-heatmap"]')).toBeNull();
+    expect(container.textContent).not.toContain("Training calendar");
+    expect(container.querySelector('[data-section="body-balance-analysis"]')).toBeNull();
+    expect(container.textContent).not.toContain("Body balance");
+    expect(container.textContent).not.toContain("Workout distribution by target area");
+
+    const readinessSection = container.querySelector('[data-section="muscle-readiness"]');
+    const strengthStyleRow = container.querySelector('[data-section="strength-style-row"]');
+    const strengthSection = container.querySelector('[data-section="strength-score"]');
+    const styleSection = container.querySelector('[data-section="training-style-profile"]');
+    const recordsSection = container.querySelector('[data-section="personal-records"]');
+    const workoutDnaSection = container.querySelector('[data-section="workout-dna"]');
+    const bestRecentSection = container.querySelector('[data-section="best-recent-workout"]');
+    const favoritesSection = container.querySelector('[data-section="favorite-movements"]');
+
+    expect(strengthStyleRow).not.toBeNull();
+    expect(strengthStyleRow?.contains(strengthSection)).toBe(true);
+    expect(strengthStyleRow?.contains(styleSection)).toBe(true);
+    expect(readinessSection && strengthStyleRow ? readinessSection.compareDocumentPosition(strengthStyleRow) & Node.DOCUMENT_POSITION_FOLLOWING : 0).toBeTruthy();
+    expect(strengthStyleRow && recordsSection ? strengthStyleRow.compareDocumentPosition(recordsSection) & Node.DOCUMENT_POSITION_FOLLOWING : 0).toBeTruthy();
+    expect(workoutDnaSection && bestRecentSection ? workoutDnaSection.compareDocumentPosition(bestRecentSection) & Node.DOCUMENT_POSITION_FOLLOWING : 0).toBeTruthy();
+    expect(workoutDnaSection && favoritesSection ? workoutDnaSection.compareDocumentPosition(favoritesSection) & Node.DOCUMENT_POSITION_FOLLOWING : 0).toBeTruthy();
+
+    expect(container.textContent).toContain("Muscle readiness");
+    expect(container.textContent).toContain("11 muscles tracked");
+    expect(container.querySelector('[data-chart="muscle-readiness-body-map"]')).not.toBeNull();
+    expect(container.textContent).toContain("Readiness scores");
+    expect(container.textContent).toContain("Strength score");
+    expect(container.textContent).toContain("Overall");
+    expect(container.textContent).toContain("535");
+    expect(container.textContent).toContain("Training style");
+    expect(container.textContent).toContain("Strength-score climber");
+    expect(container.textContent).toContain("+35 strength score");
+    expect(container.textContent).not.toContain("Derived from strength trend, training calendar");
     expect(container.textContent).toContain("Personal records");
     expect(container.textContent).toContain("Heaviest set");
     expect(container.textContent).toContain("100 lb");
@@ -666,17 +725,12 @@ describe("DashboardApp", () => {
     expect(container.textContent).toContain("120 reps");
     expect(container.textContent).toContain("Peak power");
     expect(container.textContent).toContain("450 W");
-    expect(container.textContent).toContain("Favorite movements");
-    expect(container.textContent).toContain("Barbell Squat");
-    expect(container.textContent).toContain("Body balance");
-    expect(container.textContent).toContain("Upper");
-    expect(container.textContent).toContain("42%");
-    expect(container.textContent).toContain("Training style");
-    expect(container.textContent).toContain("Strength-score climber");
-    expect(container.textContent).toContain("+35 strength score");
+    expect(container.textContent).toContain("Workout DNA");
     expect(container.textContent).toContain("Best recent workout");
     expect(container.textContent).toContain("Upper Density");
     expect(container.textContent).toContain("620 lb/min");
+    expect(container.textContent).toContain("Favorite movements");
+    expect(container.textContent).toContain("Barbell Squat");
     expectNoRaceMetaphor(container);
   });
 });
