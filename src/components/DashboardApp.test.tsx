@@ -42,15 +42,15 @@ describe("DashboardApp", () => {
 
     expect(fetch).toHaveBeenCalledWith("/api/dashboard");
     expect(container.querySelector('input[type="password"]')).toBeNull();
-    expect(container.textContent).toContain("Race to 500K");
-    expect(container.textContent).toContain("The race to 500K is live.");
-    expect(container.textContent).not.toContain("All-time leaderboard");
+    expect(container.textContent).toContain("Tonal League");
+    expect(container.textContent).toContain("All-time leaderboard");
+    expectNoRaceMetaphor(container);
     const visibleButtons = Array.from(container.querySelectorAll("button")).map((button) => button.textContent);
     expect(visibleButtons).not.toContain("Refresh");
     expect(container.textContent).not.toContain("Logout");
   });
 
-  it("frames the home screen as the race to 500K", async () => {
+  it("frames the home screen around the all-time volume leaderboard", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
@@ -96,16 +96,21 @@ describe("DashboardApp", () => {
       await Promise.resolve();
     });
 
-    expect(container.textContent).toContain("Race to 500K");
-    expect(container.textContent).toContain("Pole position");
+    expect(container.textContent).toContain("Tonal League");
+    expect(container.textContent).toContain("All-time leaderboard");
+    expect(container.textContent).toContain("Who has moved the most iron?");
+    expect(container.textContent).toContain("Current leader");
     expect(container.textContent).toContain("Taylor");
-    expect(container.textContent).toContain("50% complete");
-    expect(container.textContent).toContain("250,000 lb to the flag");
-    expect(container.textContent).toContain("Pit lane standings");
-    expect(container.textContent).toContain("P1");
-    expect(container.textContent).toContain("P2");
-    expect(container.textContent).toContain("No boring rankings, just odometers.");
-    expect(container.textContent).not.toContain("Volume standings");
+    expect(container.textContent).toContain("250,000 lb lifted");
+    expect(container.textContent).toContain("Family volume");
+    expect(container.textContent).toContain("Tracked workouts");
+    expect(container.textContent).toContain("Competitors");
+    expect(container.textContent).toContain("Volume standings");
+    expect(container.textContent).toContain("#1");
+    expect(container.textContent).toContain("#2");
+    expect(container.textContent).toContain("20 workouts");
+    expect(container.textContent).toContain("lb all-time");
+    expectNoRaceMetaphor(container);
   });
 
   it("only loads dashboard data on page load and never passively refreshes", async () => {
@@ -206,7 +211,7 @@ describe("DashboardApp", () => {
     expect(container.textContent).toContain("7,500 lb total");
   });
 
-  it("turns detailed Tonal workout summaries into race telemetry", async () => {
+  it("turns detailed Tonal workout summaries into workout DNA cards", async () => {
     window.history.replaceState(null, "", "/#member-taylor");
     vi.stubGlobal(
       "fetch",
@@ -297,12 +302,13 @@ describe("DashboardApp", () => {
       await Promise.resolve();
     });
 
-    expect(container.textContent).toContain("Back to race");
-    expect(container.textContent).toContain("Lane #1");
-    expect(container.textContent).toContain("Race odometer");
-    expect(container.textContent).toContain("24% complete");
-    expect(container.textContent).toContain("380,000 lb to the flag");
-    expect(container.textContent).toContain("Pit telemetry");
+    expect(container.textContent).toContain("Back to leaderboard");
+    expect(container.textContent).toContain("Rank #1");
+    expect(container.textContent).toContain("All-time volume");
+    expect(container.textContent).toContain("120,000");
+    expect(container.textContent).toContain("Workouts");
+    expect(container.textContent).toContain("Time trained");
+    expect(container.textContent).toContain("Workout DNA");
     expect(container.textContent).toContain("Movement telemetry");
     expect(container.textContent).toContain("Taylor's Daily Lift");
     expect(container.textContent).toContain("Wide Grip Barbell Bench Press");
@@ -322,6 +328,39 @@ describe("DashboardApp", () => {
     });
 
     expect(window.location.hash).toBe("");
-    expect(container.textContent).toContain("Race to 500K");
+    expect(container.textContent).toContain("Tonal League");
+    expectNoRaceMetaphor(container);
   });
 });
+
+function expectNoRaceMetaphor(container: HTMLElement) {
+  const text = container.textContent ?? "";
+  for (const phrase of [
+    "Race to 500K",
+    "Tonal Grand Prix",
+    "Green flag",
+    "race to 500K",
+    "Pole position",
+    "Pit lane",
+    "Manual timing",
+    "Race target",
+    "Crew volume",
+    "Race logs",
+    "No boring rankings",
+    "odometers",
+    "Back to race",
+    "Lane #",
+    "in the chase",
+    "Race odometer",
+    "checkered flag",
+    "Fuel burned",
+    "Track time",
+    "Engine rating",
+    "Lap volume",
+    "Muscle garage",
+    "Pit telemetry",
+    "race telemetry"
+  ]) {
+    expect(text).not.toContain(phrase);
+  }
+}

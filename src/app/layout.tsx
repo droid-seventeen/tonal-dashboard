@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Race to 500K",
-  description: "Private Tonal Grand Prix dashboard tracking the family race to 500,000 pounds."
+  title: "Tonal Dashboard",
+  description: "Private Tonal strength, readiness, and workout dashboard for family sharing."
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
