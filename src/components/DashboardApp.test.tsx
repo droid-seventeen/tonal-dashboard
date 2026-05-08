@@ -272,11 +272,11 @@ describe("DashboardApp", () => {
     expect(container.querySelector('[data-muscle="Quads"]')?.getAttribute("data-readiness-level")).toBe("redline");
     expect(container.querySelector('[data-muscle="Chest"]')?.getAttribute("data-tooltip")).toBe("Chest 92%");
 
-    expect(container.textContent).toContain("Weekly volume");
-    expect(container.textContent).toContain("Volume by week");
-    expect(container.querySelector('[data-chart="weekly-volume-history"]')).not.toBeNull();
-    expect(container.querySelector('[data-series="weekly-volume"]')).not.toBeNull();
-    expect(container.textContent).toContain("4,000 lb/week");
+    expect(container.textContent).not.toContain("Weekly volume");
+    expect(container.textContent).not.toContain("Volume by week");
+    expect(container.querySelector(".weekly-panel")).toBeNull();
+    expect(container.querySelector('[data-chart="weekly-volume-history"]')).toBeNull();
+    expect(container.querySelector('[data-series="weekly-volume"]')).toBeNull();
 
     expect(container.textContent).toContain("Strength score over time");
     expect(container.querySelector('[data-chart="strength-score-history"]')).not.toBeNull();

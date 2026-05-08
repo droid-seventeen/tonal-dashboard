@@ -270,10 +270,8 @@ function MemberDashboard({ data, onBack }: { data: TonalDashboard & { rank: numb
   const recentWorkoutCards = recentActivities.slice(0, 5);
   const strengthTrend = strengthTrendPoints(data);
   const cumulativeVolumeTrend = cumulativeVolumePoints(data.weeklyVolume);
-  const weeklyVolumeTrend = weeklyVolumePoints(data.weeklyVolume);
   const strengthDelta = trendDelta(strengthTrend);
   const cumulativeVolumeTotal = cumulativeVolumeTrend.at(-1)?.value ?? data.allTime.totalVolume;
-  const latestWeeklyVolume = weeklyVolumeTrend.at(-1)?.value ?? 0;
   const detailInsights = useMemo(() => getMemberDetailInsights(data), [data]);
   const detailsByActivity = useMemo(
     () => new Map((data.recentWorkoutDetails ?? []).map((detail) => [detail.activityId, detail])),
@@ -362,26 +360,6 @@ function MemberDashboard({ data, onBack }: { data: TonalDashboard & { rank: numb
           <BodyReadinessDiagram readiness={data.readiness} />
         </section>
 
-        <section className="panel weekly-panel trend-panel">
-          <div className="panel-heading trend-heading">
-            <div>
-              <h2>Weekly volume</h2>
-              <p>Volume by week with pounds on the y-axis and training week on the x-axis.</p>
-            </div>
-            <span>{weeklyVolumeTrend.length ? `${formatNumber(latestWeeklyVolume)} lb/week` : "No weekly data"}</span>
-          </div>
-          <TrendLineChart
-            dataChart="weekly-volume-history"
-            dataSeries="weekly-volume"
-            emptyText="No weekly volume data yet."
-            points={weeklyVolumeTrend}
-            stroke="var(--accent)"
-            valueSuffix=" lb"
-            xAxisLabel="Week"
-            yAxisLabel="Volume"
-            zeroBaseline
-          />
-        </section>
       </div>
 
       <section className="panel workouts-panel">
