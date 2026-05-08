@@ -44,10 +44,24 @@ describe("DashboardApp", () => {
     expect(container.querySelector('input[type="password"]')).toBeNull();
     expect(container.textContent).toContain("Tonal League");
     expect(container.textContent).toContain("All-time leaderboard");
+    expect(container.textContent).toContain("No family members configured yet");
+    expect(container.textContent).toContain("Add TONAL_MEMBERS_JSON entries");
     expectNoRaceMetaphor(container);
     const visibleButtons = Array.from(container.querySelectorAll("button")).map((button) => button.textContent);
     expect(visibleButtons).not.toContain("Refresh");
     expect(container.textContent).not.toContain("Logout");
+  });
+
+  it("shows a warmer loading state while Tonal data is still loading", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockReturnValue(new Promise(() => undefined)));
+
+    await act(async () => {
+      root.render(<DashboardApp />);
+    });
+
+    expect(container.textContent).toContain("Warming up Tonal data");
+    expect(container.textContent).toContain("Pulling family strength signals");
+    expect(container.querySelectorAll(".skeleton-card div").length).toBeGreaterThanOrEqual(3);
   });
 
   it("frames the home screen around the all-time volume leaderboard", async () => {
@@ -61,24 +75,38 @@ describe("DashboardApp", () => {
           members: [
             {
               member: { id: "taylor", name: "Taylor" },
-              fetchedAt: "2026-04-18T15:00:00.000Z",
-              strength: {},
+              fetchedAt: "2026-05-14T10:00:00.000Z",
+              strength: { overall: 520 },
+              strengthHistory: [
+                { activityTime: "2026-04-01T10:00:00Z", overall: 505 },
+                { activityTime: "2026-05-01T10:00:00Z", overall: 520 }
+              ],
               readiness: {},
               topReady: [],
               allTime: { totalVolume: 250000, totalWorkouts: 20, totalReps: 2400, totalDuration: 72000 },
-              weeklyVolume: [],
+              weeklyVolume: [
+                { week: "2026-W19", workouts: 2, volume: 14000 },
+                { week: "2026-W20", workouts: 1, volume: 8000 }
+              ],
               activities: [],
               recentWorkoutDetails: [],
               errors: []
             },
             {
               member: { id: "casey", name: "Casey" },
-              fetchedAt: "2026-04-18T15:00:00.000Z",
-              strength: {},
+              fetchedAt: "2026-05-14T10:05:00.000Z",
+              strength: { overall: 480 },
+              strengthHistory: [
+                { activityTime: "2026-04-01T10:00:00Z", overall: 450 },
+                { activityTime: "2026-05-01T10:00:00Z", overall: 480 }
+              ],
               readiness: {},
               topReady: [],
               allTime: { totalVolume: 125000, totalWorkouts: 12, totalReps: 1200, totalDuration: 36000 },
-              weeklyVolume: [],
+              weeklyVolume: [
+                { week: "2026-W19", workouts: 1, volume: 2000 },
+                { week: "2026-W20", workouts: 3, volume: 12000 }
+              ],
               activities: [],
               recentWorkoutDetails: [],
               errors: []
@@ -106,10 +134,40 @@ describe("DashboardApp", () => {
     expect(container.textContent).toContain("Tracked workouts");
     expect(container.textContent).toContain("Competitors");
     expect(container.textContent).toContain("Volume standings");
+    expect(container.textContent).toContain("Last updated");
+    expect(container.textContent).toContain("May 14, 10:05 AM UTC");
+    expect(container.textContent).toContain("All-time");
+    expect(container.textContent).toContain("This month");
+    expect(container.textContent).toContain("This week");
+    expect(container.textContent).toContain("Workouts");
+    expect(container.textContent).toContain("Fairness adjusted");
+    expect(container.textContent).toContain("This week 8,000 lb");
+    expect(container.textContent).toContain("-43% vs prior week");
+    expect(container.textContent).toContain("2-week streak");
+    expect(container.textContent).toContain("+15 strength");
     expect(container.textContent).toContain("#1");
     expect(container.textContent).toContain("#2");
     expect(container.textContent).toContain("20 workouts");
     expect(container.textContent).toContain("lb all-time");
+
+    const thisWeekTab = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("This week"));
+    await act(async () => {
+      thisWeekTab?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    const weeklyRows = Array.from(container.querySelectorAll(".leader-row"));
+    expect(weeklyRows[0].textContent).toContain("Casey");
+    expect(weeklyRows[0].textContent).toContain("12,000");
+    expect(weeklyRows[0].textContent).toContain("lb this week");
+    expect(weeklyRows[0].textContent).toContain("↑ 1");
+    expect(weeklyRows[1].textContent).toContain("Taylor");
+    expect(weeklyRows[1].textContent).toContain("↓ 1");
+
+    const fairnessTab = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Fairness adjusted"));
+    await act(async () => {
+      fairnessTab?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(container.textContent).toContain("Fairness adjusted standings");
+    expect(container.textContent).toContain("fairness pts");
     expectNoRaceMetaphor(container);
   });
 

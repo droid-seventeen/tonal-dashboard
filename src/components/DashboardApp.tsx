@@ -11,7 +11,15 @@ import {
   Zap
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { formatDuration, formatNumber, rankMembersByAllTimeVolume } from "@/lib/metrics";
+import {
+  formatDuration,
+  formatNumber,
+  LEADERBOARD_CATEGORIES,
+  latestDashboardTimestamp,
+  rankMembersForCategory,
+  type LeaderboardCategoryId,
+  type RankedCategoryEntry
+} from "@/lib/metrics";
 import type { TonalDashboard } from "@/lib/tonal";
 
 type ApiPayload = {
@@ -30,6 +38,7 @@ type TrendPoint = {
   value: number;
 };
 type ReadinessLevel = "unknown" | "redline" | "rebuild" | "ready" | "prime";
+type RankedTonalMember = RankedCategoryEntry<TonalDashboard>;
 const READINESS_LEVELS: Record<ReadinessLevel, { label: string; color: string; range: string }> = {
   unknown: { label: "No signal", color: "#2b3038", range: "—" },
   redline: { label: "Redline", color: "#fb7185", range: "0–39%" },
@@ -42,6 +51,7 @@ export default function DashboardApp() {
   const [payload, setPayload] = useState<ApiPayload | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [view, setView] = useState<View>("leaderboard");
+  const [category, setCategory] = useState<LeaderboardCategoryId>("allTimeVolume");
   const [loading, setLoading] = useState(false);
 
   async function load() {
@@ -77,7 +87,10 @@ export default function DashboardApp() {
     return () => window.removeEventListener("hashchange", syncFromHash);
   }, []);
 
-  const leaderboard = useMemo(() => rankMembersByAllTimeVolume(payload?.members ?? []), [payload?.members]);
+  const members = useMemo(() => payload?.members ?? [], [payload?.members]);
+  const lastUpdatedAt = useMemo(() => latestDashboardTimestamp(members), [members]);
+  const dashboardDate = useMemo(() => lastUpdatedAt ?? new Date(), [lastUpdatedAt]);
+  const leaderboard = useMemo(() => rankMembersForCategory(members, category, dashboardDate), [members, category, dashboardDate]);
   const selectedMember = useMemo(
     () => leaderboard.find((candidate) => candidate.member.id === selected) ?? leaderboard[0],
     [leaderboard, selected]
@@ -108,14 +121,22 @@ export default function DashboardApp() {
               <span className="brand-subtitle">Family volume board</span>
             </span>
           </a>
+          <LastUpdatedPill loading={loading} updatedAt={lastUpdatedAt} />
         </header>
 
         {payload?.error ? <Notice tone="error">{payload.error}</Notice> : null}
         {payload?.configured === false ? <Notice>{payload.message}</Notice> : null}
-        {loading && !payload ? <LeaderboardSkeleton /> : null}
+        {loading && !payload ? <LoadingState /> : null}
 
         {payload && view === "leaderboard" ? (
-          <LeaderboardView leaderboard={leaderboard} loading={loading} onOpenMember={openDetail} />
+          <LeaderboardView
+            category={category}
+            leaderboard={leaderboard}
+            loading={loading}
+            onCategoryChange={setCategory}
+            onOpenMember={openDetail}
+            updatedAt={lastUpdatedAt}
+          />
         ) : null}
 
         {payload && view === "detail" && selectedMember ? (
@@ -127,15 +148,22 @@ export default function DashboardApp() {
 }
 
 function LeaderboardView({
+  category,
   leaderboard,
   loading,
-  onOpenMember
+  onCategoryChange,
+  onOpenMember,
+  updatedAt
 }: {
-  leaderboard: ReturnType<typeof rankMembersByAllTimeVolume<TonalDashboard>>;
+  category: LeaderboardCategoryId;
+  leaderboard: RankedTonalMember[];
   loading: boolean;
+  onCategoryChange: (category: LeaderboardCategoryId) => void;
   onOpenMember: (memberId: string) => void;
+  updatedAt?: Date;
 }) {
   const champion = leaderboard[0];
+  const categoryDefinition = LEADERBOARD_CATEGORIES.find((candidate) => candidate.id === category) ?? LEADERBOARD_CATEGORIES[0];
   const totalFamilyVolume = leaderboard.reduce((sum, member) => sum + member.allTime.totalVolume, 0);
   const totalFamilyWorkouts = leaderboard.reduce((sum, member) => sum + member.allTime.totalWorkouts, 0);
 
@@ -152,7 +180,7 @@ function LeaderboardView({
         <div className="hero-stat-card">
           <span className="stat-overline">Current leader</span>
           <strong>{champion?.member.name ?? "Waiting for data"}</strong>
-          <span>{champion ? `${formatNumber(champion.allTime.totalVolume)} lb lifted` : "Add Tonal members to begin."}</span>
+          <span>{champion ? (category === "allTimeVolume" ? `${formatNumber(champion.allTime.totalVolume)} lb lifted` : `${champion.leaderboardDisplay} ${champion.leaderboardSuffix}`) : "Add Tonal members to begin."}</span>
         </div>
       </div>
 
@@ -162,32 +190,59 @@ function LeaderboardView({
         <LeagueStat label="Competitors" value={formatNumber(leaderboard.length)} />
       </div>
 
+      <div className="category-tabs" aria-label="Leaderboard categories" role="tablist">
+        {LEADERBOARD_CATEGORIES.map((candidate) => (
+          <button
+            aria-selected={candidate.id === category}
+            className={candidate.id === category ? "category-tab category-tab-active" : "category-tab"}
+            key={candidate.id}
+            onClick={() => onCategoryChange(candidate.id)}
+            role="tab"
+            type="button"
+          >
+            <span>{candidate.label}</span>
+            <em>{candidate.description}</em>
+          </button>
+        ))}
+      </div>
+
       <div className="leaderboard-card">
         <div className="leaderboard-heading">
           <div>
-            <h2>Volume standings</h2>
-            <p>{loading ? "Loading Tonal data…" : "Refresh the page to pull the latest Tonal data."}</p>
+            <h2>{categoryDefinition.standingsTitle}</h2>
+            <p>{loading ? "Loading Tonal data…" : "Refresh the page to pull the latest Tonal data. Rank movement compares against the prior matching window."}</p>
           </div>
-          <span className="live-pill"><span /> Page refresh only</span>
+          <div className="leaderboard-status-row">
+            <LastUpdatedPill compact updatedAt={updatedAt} />
+            <span className="live-pill"><span /> Page refresh only</span>
+          </div>
         </div>
 
         <div className="leader-list">
           {leaderboard.map((member) => (
             <a className="leader-row" href={`#member-${encodeURIComponent(member.member.id)}`} key={member.member.id} onClick={(event) => { event.preventDefault(); onOpenMember(member.member.id); }}>
-              <span className="leader-rank">#{member.rank}</span>
+              <span className="leader-rank-stack">
+                <span className="leader-rank">#{member.rank}</span>
+                <RankMovementIndicator member={member} />
+              </span>
               <span className="leader-avatar">{initials(member.member.name)}</span>
               <span className="leader-main">
                 <strong>{member.member.name}</strong>
                 <span>{member.allTime.totalWorkouts ? `${formatNumber(member.allTime.totalWorkouts)} workouts` : "No workouts loaded yet"}</span>
+                <span className="trend-badge-row" aria-label={`${member.member.name} personal trend badges`}>
+                  {member.trendBadges.map((badge) => (
+                    <span className={`trend-badge trend-badge-${badge.tone}`} key={`${member.member.id}-${badge.label}`}>{badge.label} {badge.value}</span>
+                  ))}
+                </span>
               </span>
               <span className="leader-volume">
-                <strong>{formatNumber(member.allTime.totalVolume)}</strong>
-                <span>lb all-time</span>
+                <strong>{member.leaderboardDisplay}</strong>
+                <span>{member.leaderboardSuffix}</span>
               </span>
               <ChevronRight className="leader-chevron" size={18} />
             </a>
           ))}
-          {!leaderboard.length ? <Empty text="No members configured yet. Add TONAL_MEMBERS_JSON entries to populate the league." /> : null}
+          {!leaderboard.length ? <Empty title="No family members configured yet" text="Add TONAL_MEMBERS_JSON entries to populate the league." /> : null}
         </div>
       </div>
     </section>
@@ -677,8 +732,37 @@ function Notice({ children, tone = "info" }: { children: React.ReactNode; tone?:
   return <div className={tone === "error" ? "notice notice-error" : "notice"}>{children}</div>;
 }
 
-function Empty({ text }: { text: string }) {
-  return <div className="empty-state">{text}</div>;
+function Empty({ text, title }: { text: string; title?: string }) {
+  return <div className="empty-state">{title ? <strong>{title}</strong> : null}<span>{text}</span></div>;
+}
+
+function LastUpdatedPill({ compact = false, loading = false, updatedAt }: { compact?: boolean; loading?: boolean; updatedAt?: Date }) {
+  const label = loading && !updatedAt ? "Fetching now" : updatedAt ? formatUpdatedAt(updatedAt) : "Waiting for first sync";
+  return <div className={compact ? "updated-pill updated-pill-compact" : "updated-pill"}><span>Last updated</span><strong>{label}</strong></div>;
+}
+
+function RankMovementIndicator({ member }: { member: RankedTonalMember }) {
+  const aria = member.rankMovementTone === "up"
+    ? `${member.member.name} moved up ${member.rankMovement} rank${member.rankMovement === 1 ? "" : "s"}`
+    : member.rankMovementTone === "down"
+      ? `${member.member.name} moved down ${Math.abs(member.rankMovement)} rank${Math.abs(member.rankMovement) === 1 ? "" : "s"}`
+      : member.rankMovementTone === "new"
+        ? `${member.member.name} is new in this category window`
+        : `${member.member.name} had no rank change`;
+  return <span aria-label={aria} className={`rank-movement rank-movement-${member.rankMovementTone}`}>{member.rankMovementLabel}</span>;
+}
+
+function LoadingState() {
+  return (
+    <section className="loading-state">
+      <div className="loading-hero">
+        <div className="eyebrow"><Medal size={14} /> Syncing family board</div>
+        <h1>Warming up Tonal data…</h1>
+        <p>Pulling family strength signals, readiness, recent workouts, and leaderboard history. This can take a moment.</p>
+      </div>
+      <LeaderboardSkeleton />
+    </section>
+  );
 }
 
 function LeaderboardSkeleton() {
@@ -726,6 +810,17 @@ function readinessLevel(score?: number): ReadinessLevel {
   if (score < 70) return "rebuild";
   if (score < 85) return "ready";
   return "prime";
+}
+
+function formatUpdatedAt(value: Date): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "UTC",
+    timeZoneName: "short"
+  }).format(value);
 }
 
 function formatDate(value: string): string {
