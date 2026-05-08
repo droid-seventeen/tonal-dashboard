@@ -40,14 +40,14 @@ describe("DashboardApp", () => {
       await Promise.resolve();
     });
 
-    expect(fetch).toHaveBeenCalledWith("/api/dashboard", { cache: "no-store" });
+    expect(fetch).toHaveBeenCalledWith("/api/dashboard");
     expect(container.querySelector('input[type="password"]')).toBeNull();
     expect(container.textContent).toContain("All-time leaderboard");
     expect(container.textContent).not.toContain("Refresh");
     expect(container.textContent).not.toContain("Logout");
   });
 
-  it("automatically reloads dashboard data every five minutes", async () => {
+  it("automatically reloads dashboard data every fifteen minutes", async () => {
     vi.useFakeTimers();
 
     await act(async () => {
@@ -61,10 +61,10 @@ describe("DashboardApp", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+      await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
     });
 
     expect(fetch).toHaveBeenCalledTimes(2);
-    expect(fetch).toHaveBeenLastCalledWith("/api/dashboard", { cache: "no-store" });
+    expect(fetch).toHaveBeenLastCalledWith("/api/dashboard");
   });
 });

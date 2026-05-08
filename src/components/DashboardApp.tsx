@@ -22,7 +22,7 @@ type ApiPayload = {
 };
 
 type View = "leaderboard" | "detail";
-const AUTO_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+const AUTO_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 
 export default function DashboardApp() {
   const [payload, setPayload] = useState<ApiPayload | null>(null);
@@ -33,7 +33,7 @@ export default function DashboardApp() {
   async function load() {
     setLoading(true);
     try {
-      const response = await fetch("/api/dashboard", { cache: "no-store" });
+      const response = await fetch("/api/dashboard");
       const next = (await response.json().catch(() => ({ error: `Dashboard request failed (${response.status}).` }))) as ApiPayload;
       setPayload(response.ok ? next : { error: next.error ?? `Dashboard request failed (${response.status}).` });
     } catch (error) {
@@ -154,7 +154,7 @@ function LeaderboardView({
         <div className="leaderboard-heading">
           <div>
             <h2>Volume standings</h2>
-            <p>{loading ? "Updating live Tonal data…" : "Auto-updates from Tonal every five minutes."}</p>
+            <p>{loading ? "Updating live Tonal data…" : "Auto-updates from Tonal every fifteen minutes."}</p>
           </div>
           <span className="live-pill"><span /> Auto live</span>
         </div>

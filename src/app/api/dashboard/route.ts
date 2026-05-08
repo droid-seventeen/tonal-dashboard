@@ -3,6 +3,7 @@ import { parseMembersFromEnv } from "@/lib/members";
 import { getFamilyDashboard } from "@/lib/tonal";
 
 export const dynamic = "force-dynamic";
+const DASHBOARD_CACHE_CONTROL = "public, max-age=0, s-maxage=900, stale-while-revalidate=900";
 
 export async function GET() {
   let members;
@@ -13,7 +14,7 @@ export async function GET() {
   }
 
   if (!members.length) {
-    return NextResponse.json({
+    return cachedDashboardJson({
       configured: false,
       message: "Set TONAL_MEMBERS_JSON to load real family dashboard data.",
       members: []
@@ -21,7 +22,7 @@ export async function GET() {
   }
 
   const settled = await Promise.allSettled(members.map((member) => getFamilyDashboard(member)));
-  return NextResponse.json({
+  return cachedDashboardJson({
     configured: true,
     members: settled.map((result, index) =>
       result.status === "fulfilled"
@@ -38,5 +39,13 @@ export async function GET() {
             errors: [(result.reason as Error).message]
           }
     )
+  });
+}
+
+function cachedDashboardJson(payload: unknown) {
+  return NextResponse.json(payload, {
+    headers: {
+      "Cache-Control": DASHBOARD_CACHE_CONTROL
+    }
   });
 }
