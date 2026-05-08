@@ -198,7 +198,10 @@ function LeaderboardView({
   const totalFamilyVolume = leaderboard.reduce((sum, member) => sum + member.allTime.totalVolume, 0);
   const totalFamilyWorkouts = leaderboard.reduce((sum, member) => sum + member.allTime.totalWorkouts, 0);
   const familyWeeklyPeak = Math.max(0, ...leaderboard.flatMap((member) => member.weeklyVolume.map((week) => week.volume)));
-  const familyStrengthPeak = Math.max(0, ...leaderboard.map((member) => member.strength.overall ?? 0));
+  const familyStrengthPeak = Math.max(
+    0,
+    ...leaderboard.flatMap((member) => familyStrengthScorePoints(member).map((point) => point.value))
+  );
 
   return (
     <section className="leaderboard-page">
@@ -294,11 +297,11 @@ function LeaderboardView({
         <div className="panel-heading trend-heading">
           <div>
             <h2>Family strength</h2>
-            <p>Current overall Tonal strength score for each person.</p>
+            <p>Overall strength score over time on the same time axis.</p>
           </div>
-          <span>{familyStrengthPeak ? `${formatNumber(familyStrengthPeak)} top score` : "No strength data"}</span>
+          <span>{familyStrengthPeak ? `${formatNumber(familyStrengthPeak)} peak score` : "No strength data"}</span>
         </div>
-        <FamilyStrengthScoreBars members={leaderboard} />
+        <FamilyStrengthScoreOverlay members={leaderboard} />
       </section>
     </section>
   );
@@ -321,7 +324,7 @@ function MemberDashboard({ avatarUrl, data, onBack }: { avatarUrl?: string; data
       <a className="back-button" href="#" onClick={(event) => { event.preventDefault(); onBack(); }}><ArrowLeft size={16} /> Back to leaderboard</a>
       {data.errors.length ? <Notice tone="error">{data.errors.join(" • ")}</Notice> : null}
 
-      <div className="athlete-hero">
+      <div className="athlete-hero" data-section="member-hero">
         <div className="athlete-hero-copy">
           <div className="athlete-identity">
             <MemberAvatar avatarUrl={avatarUrl} className="athlete-avatar" member={data.member} />
@@ -341,17 +344,16 @@ function MemberDashboard({ avatarUrl, data, onBack }: { avatarUrl?: string; data
         </div>
       </div>
 
-      <section className="panel readiness-panel" data-section="muscle-readiness">
-        <div className="panel-heading"><h2>Muscle readiness</h2><span>{Object.keys(data.readiness).length} muscles tracked</span></div>
-        <BodyReadinessDiagram readiness={data.readiness} />
-      </section>
+      <div className="member-insight-grid">
+        <PersonalRecordsPanel insights={detailInsights} />
+      </div>
 
       <div className="strength-style-row" data-section="strength-style-row">
         <StrengthScorePanel data={data} />
         <TrainingStylePanel insights={detailInsights} />
       </div>
 
-      <div className="trend-grid">
+      <div className="trend-grid" data-section="trend-row">
         <section className="panel trend-panel">
           <div className="panel-heading trend-heading">
             <div>
@@ -389,9 +391,10 @@ function MemberDashboard({ avatarUrl, data, onBack }: { avatarUrl?: string; data
         </section>
       </div>
 
-      <div className="member-insight-grid">
-        <PersonalRecordsPanel insights={detailInsights} />
-      </div>
+      <section className="panel readiness-panel" data-section="muscle-readiness">
+        <div className="panel-heading"><h2>Muscle readiness</h2><span>{Object.keys(data.readiness).length} muscles tracked</span></div>
+        <BodyReadinessDiagram readiness={data.readiness} />
+      </section>
 
       <section className="panel workouts-panel" data-section="workout-dna">
         <div className="panel-heading workout-dna-heading">
@@ -992,65 +995,95 @@ function FamilyWeeklyVolumeOverlay({ members }: { members: RankedTonalMember[] }
   );
 }
 
-function FamilyStrengthScoreBars({ members }: { members: RankedTonalMember[] }) {
-  const bars = members
+function FamilyStrengthScoreOverlay({ members }: { members: RankedTonalMember[] }) {
+  const series = members
     .map((member, index) => ({
       id: member.member.id,
       name: member.member.name,
       color: FAMILY_SERIES_COLORS[index % FAMILY_SERIES_COLORS.length],
-      value: member.strength.overall
+      points: familyStrengthScorePoints(member)
     }))
-    .filter((member): member is { id: string; name: string; color: string; value: number } => typeof member.value === "number" && Number.isFinite(member.value));
+    .filter((member) => member.points.length);
 
-  if (!bars.length) return <Empty text="No overall strength scores returned yet." />;
+  if (!series.length) return <Empty text="No overall strength score history returned yet." />;
 
+  const keys = Array.from(new Set(series.flatMap((member) => member.points.map((point) => point.sortKey))))
+    .sort((a, b) => a.localeCompare(b))
+    .slice(-MAX_FAMILY_WEEKLY_POINTS);
+  const labelByKey = new Map(series.flatMap((member) => member.points.map((point) => [point.sortKey, point.label] as const)));
   const width = 760;
   const height = 260;
   const padding = 34;
-  const chartWidth = width - padding * 2;
-  const chartHeight = height - padding * 2;
-  const max = Math.max(1, ...bars.map((member) => member.value));
-  const range = Math.max(1, Math.ceil(max * 1.12));
-  const barSlot = chartWidth / bars.length;
-  const barWidth = Math.min(76, Math.max(34, barSlot * 0.48));
+  const values = series.flatMap((member) => member.points.filter((point) => keys.includes(point.sortKey)).map((point) => point.value));
+  const minRaw = Math.min(...values);
+  const maxRaw = Math.max(...values);
+  const spread = Math.max(1, maxRaw - minRaw);
+  const min = Math.max(0, Math.floor(minRaw - spread * 0.4));
+  const max = maxRaw === minRaw ? maxRaw + 1 : Math.ceil(maxRaw + spread * 0.25);
+  const range = Math.max(1, max - min);
   const baseY = height - padding;
-  const chartBars = bars.map((member, index) => {
-    const barHeight = (Math.max(0, member.value) / range) * chartHeight;
-    const x = padding + index * barSlot + (barSlot - barWidth) / 2;
-    const y = baseY - barHeight;
-    return { ...member, x, y, barHeight };
+  const xForKey = (key: string) => {
+    const index = keys.indexOf(key);
+    return keys.length === 1 ? width / 2 : padding + (index / (keys.length - 1)) * (width - padding * 2);
+  };
+  const yForValue = (value: number) => padding + ((max - value) / range) * (height - padding * 2);
+  const chartSeries = series.map((member) => {
+    const coords = member.points
+      .filter((point) => keys.includes(point.sortKey))
+      .map((point) => ({ ...point, x: xForKey(point.sortKey), y: yForValue(point.value) }));
+    const pathD = coords.map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
+    return { ...member, coords, pathD, latest: coords.at(-1) };
   });
 
   return (
     <div className="family-strength-chart-wrap">
-      <svg aria-label="Family overall strength scores" className="family-strength-chart" data-chart="family-strength-score-bars" role="img" viewBox={`0 0 ${width} ${height}`}>
+      <svg aria-label="Family overall strength score time series" className="family-strength-chart" data-chart="family-strength-score-overlay" role="img" viewBox={`0 0 ${width} ${height}`}>
         {[0, 1, 2, 3].map((line) => {
-          const y = padding + (line / 3) * chartHeight;
+          const y = padding + (line / 3) * (height - padding * 2);
           return <line className="trend-grid-line" key={line} x1={padding} x2={width - padding} y1={y} y2={y} />;
         })}
-        {chartBars.map((member) => (
-          <g className="family-strength-bar-group" data-series={`strength-score-${member.id}`} key={member.id} style={{ "--series-color": member.color } as React.CSSProperties}>
-            <title>{member.name} {formatNumber(member.value)} strength score</title>
-            <rect className="family-strength-bar" height={Math.max(2, member.barHeight)} rx="12" width={barWidth} x={member.x} y={member.y} />
-            <text className="family-strength-value" x={member.x + barWidth / 2} y={member.y - 8}>{formatNumber(member.value)}</text>
-            <text className="family-strength-label" x={member.x + barWidth / 2} y={baseY + 20}>{member.name}</text>
+        {chartSeries.map((member) => (
+          <g className="family-strength-series" key={member.id} style={{ "--series-color": member.color } as React.CSSProperties}>
+            <title>{member.name} strength score history</title>
+            <path className="family-strength-line" d={member.pathD} data-series={`strength-score-${member.id}`} fill="none" stroke={member.color} />
+            {member.coords.map((point) => (
+              <circle className="family-strength-point" cx={point.x} cy={point.y} key={`${member.id}-${point.sortKey}`} r="3.8">
+                <title>{member.name} {point.label}: {formatNumber(point.value)} strength score</title>
+              </circle>
+            ))}
           </g>
         ))}
-        <text className="trend-y-label" x={padding} y={padding - 10}>{formatNumber(range)}</text>
-        <text className="trend-y-label" x={padding} y={baseY + 18}>0</text>
+        <text className="trend-y-label" x={padding} y={padding - 10}>{formatNumber(max)}</text>
+        <text className="trend-y-label" x={padding} y={baseY + 18}>{formatNumber(min)}</text>
         <text className="trend-axis-label trend-axis-label-y" transform={`translate(13 ${height / 2}) rotate(-90)`}>Strength</text>
-        <text className="trend-axis-label trend-axis-label-x" x={width / 2} y={height - 5}>Person</text>
+        <text className="trend-axis-label trend-axis-label-x" x={width / 2} y={height - 5}>Snapshot</text>
       </svg>
+      <div className="family-strength-axis-row">
+        <span>{labelByKey.get(keys[0]) ?? keys[0]}</span>
+        <strong>Overall strength score</strong>
+        <span>{labelByKey.get(keys.at(-1) ?? "") ?? keys.at(-1)}</span>
+      </div>
       <div className="family-strength-legend">
-        {chartBars.map((member) => (
+        {chartSeries.map((member) => (
           <span data-series-legend={`strength-score-${member.id}`} key={member.id}>
             <i style={{ background: member.color }} />
-            {member.name} <strong>{formatNumber(member.value)}</strong>
+            {member.name} <strong>{formatNumber(member.latest?.value ?? 0)}</strong>
           </span>
         ))}
       </div>
     </div>
   );
+}
+
+function familyStrengthScorePoints(member: TonalDashboard): Array<TrendPoint & { sortKey: string }> {
+  const history = (member.strengthHistory ?? [])
+    .map((entry) => ({ label: formatShortDate(entry.activityTime), sortKey: entry.activityTime, value: entry.overall }))
+    .filter((entry): entry is TrendPoint & { sortKey: string } => typeof entry.value === "number" && Number.isFinite(entry.value))
+    .sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+  if (history.length) return history;
+  return typeof member.strength.overall === "number" && Number.isFinite(member.strength.overall)
+    ? [{ label: "Current", sortKey: member.fetchedAt ?? "current", value: member.strength.overall }]
+    : [];
 }
 
 function BodyReadinessDiagram({ readiness }: { readiness: Record<string, number> }) {
