@@ -3,7 +3,7 @@ import { parseMembersFromEnv } from "@/lib/members";
 import { getFamilyDashboard } from "@/lib/tonal";
 
 export const dynamic = "force-dynamic";
-const DASHBOARD_CACHE_CONTROL = "public, max-age=0, s-maxage=900, stale-while-revalidate=900";
+const DASHBOARD_CACHE_CONTROL = "no-store";
 
 export async function GET() {
   let members;

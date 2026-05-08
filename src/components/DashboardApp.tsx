@@ -22,7 +22,6 @@ type ApiPayload = {
 };
 
 type View = "leaderboard" | "detail";
-const AUTO_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 
 export default function DashboardApp() {
   const [payload, setPayload] = useState<ApiPayload | null>(null);
@@ -45,8 +44,6 @@ export default function DashboardApp() {
 
   useEffect(() => {
     void load();
-    const interval = window.setInterval(() => void load(), AUTO_REFRESH_INTERVAL_MS);
-    return () => window.clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -154,9 +151,9 @@ function LeaderboardView({
         <div className="leaderboard-heading">
           <div>
             <h2>Volume standings</h2>
-            <p>{loading ? "Updating live Tonal data…" : "Auto-updates from Tonal every fifteen minutes."}</p>
+            <p>{loading ? "Loading Tonal data…" : "Refresh the page to pull the latest Tonal data."}</p>
           </div>
-          <span className="live-pill"><span /> Auto live</span>
+          <span className="live-pill"><span /> Page refresh only</span>
         </div>
 
         <div className="leader-list">
