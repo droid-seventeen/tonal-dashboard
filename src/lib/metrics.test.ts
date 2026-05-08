@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   groupActivitiesByWeek,
+  normalizeStrengthHistory,
   normalizeStrengthScores,
   rankMembersByAllTimeVolume,
   summarizeAllTimeStats,
@@ -17,6 +18,19 @@ describe("dashboard metrics", () => {
         { strengthBodyRegion: "", bodyRegionDisplay: "", score: 501 }
       ])
     ).toEqual({ overall: 501, upper: 525, lower: 490, core: 489 });
+  });
+
+  it("normalizes Tonal strength history chronologically", () => {
+    expect(
+      normalizeStrengthHistory([
+        { activityTime: "2026-03-15T12:00:00Z", overall: 525, upper: 560, core: 510, lower: 505 },
+        { activityTime: "invalid", overall: 999, upper: 999, core: 999, lower: 999 },
+        { activityTime: "2026-01-15T12:00:00Z", overall: 470, upper: 500, core: 455, lower: 465 }
+      ])
+    ).toEqual([
+      { activityTime: "2026-01-15T12:00:00Z", overall: 470, upper: 500, core: 455, lower: 465 },
+      { activityTime: "2026-03-15T12:00:00Z", overall: 525, upper: 560, core: 510, lower: 505 }
+    ]);
   });
 
   it("sorts readiness muscles high to low", () => {

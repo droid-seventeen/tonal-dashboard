@@ -11,6 +11,22 @@ export type NormalizedStrengthScores = {
   core?: number;
 };
 
+export type StrengthHistoryInput = {
+  activityTime?: string | null;
+  overall?: number | null;
+  upper?: number | null;
+  lower?: number | null;
+  core?: number | null;
+};
+
+export type StrengthHistoryPoint = {
+  activityTime: string;
+  overall?: number;
+  upper?: number;
+  lower?: number;
+  core?: number;
+};
+
 export type ActivityInput = {
   activityTime?: string | null;
   workoutPreview?: {
@@ -60,6 +76,24 @@ export function normalizeStrengthScores(scores: StrengthScoreInput[]): Normalize
     else if (region.includes("overall")) normalized.overall = value;
   }
   return normalized;
+}
+
+export function normalizeStrengthHistory(entries: StrengthHistoryInput[]): StrengthHistoryPoint[] {
+  return entries
+    .filter((entry): entry is StrengthHistoryInput & { activityTime: string } =>
+      Boolean(entry.activityTime && !Number.isNaN(new Date(entry.activityTime).getTime()))
+    )
+    .map((entry) => ({
+      activityTime: entry.activityTime,
+      overall: finiteNumber(entry.overall),
+      upper: finiteNumber(entry.upper),
+      lower: finiteNumber(entry.lower),
+      core: finiteNumber(entry.core)
+    }))
+    .filter((entry) =>
+      entry.overall !== undefined || entry.upper !== undefined || entry.lower !== undefined || entry.core !== undefined
+    )
+    .sort((a, b) => new Date(a.activityTime).getTime() - new Date(b.activityTime).getTime());
 }
 
 export function topReadyMuscles(readiness: Record<string, number>, count = 4): [string, number][] {
@@ -115,6 +149,10 @@ export function isoWeekKey(input: Date): string {
   const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
   const week = Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
   return `${date.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
+function finiteNumber(value?: number | null): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? Math.round(value) : undefined;
 }
 
 export function formatDuration(seconds?: number | null): string {

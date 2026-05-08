@@ -1,5 +1,5 @@
 import { TonalMember } from "./members";
-import { AllTimeStats, groupActivitiesByWeek, normalizeStrengthScores, summarizeAllTimeStats, topReadyMuscles } from "./metrics";
+import { AllTimeStats, groupActivitiesByWeek, normalizeStrengthHistory, normalizeStrengthScores, summarizeAllTimeStats, topReadyMuscles } from "./metrics";
 
 const AUTH0_CLIENT_ID = "ERCyexW-xoVG_Yy3RDe-eV4xsOnRHP6L";
 const AUTH0_TOKEN_URL = "https://tonal.auth0.com/oauth/token";
@@ -18,6 +18,7 @@ export type TonalDashboard = {
   fetchedAt: string;
   profile?: Record<string, unknown>;
   strength: ReturnType<typeof normalizeStrengthScores>;
+  strengthHistory: ReturnType<typeof normalizeStrengthHistory>;
   readiness: Record<string, number>;
   topReady: [string, number][];
   allTime: AllTimeStats;
@@ -117,9 +118,9 @@ export async function getFamilyDashboard(member: TonalMember): Promise<TonalDash
   const userId = userInfo.id ?? userInfo.userId ?? userInfo.sub;
   if (!userId) throw new Error("Tonal userinfo response did not include a user id.");
 
-  const [profile, strengthRaw, readinessRaw, activitiesRaw, workoutActivitiesRaw] = await Promise.all([
-    client.get<Record<string, unknown>>(`/v6/users/${userId}`).catch((error) => noteError(errors, "profile", error)),
+  const [strengthRaw, strengthHistoryRaw, readinessRaw, activitiesRaw, workoutActivitiesRaw] = await Promise.all([
     client.get<unknown[]>(`/v6/users/${userId}/strength-scores/current`).catch((error) => noteError(errors, "strength", error)),
+    client.get<unknown[]>(`/v6/users/${userId}/strength-scores/history?limit=40`).catch((error) => noteError(errors, "strength history", error)),
     client.get<Record<string, number>>(`/v6/users/${userId}/muscle-readiness/current`).catch((error) => noteError(errors, "readiness", error)),
     client.get<TonalActivity[]>(`/v6/users/${userId}/activities?limit=20`).catch((error) => noteError(errors, "activities", error)),
     client.getPaginated<TonalWorkoutActivity>(`/v6/users/${userId}/workout-activities`).catch((error) =>
@@ -141,8 +142,8 @@ export async function getFamilyDashboard(member: TonalMember): Promise<TonalDash
   return {
     member: { id: member.id, name: member.name },
     fetchedAt: new Date().toISOString(),
-    profile: profile && !Array.isArray(profile) ? profile : undefined,
     strength: normalizeStrengthScores(Array.isArray(strengthRaw) ? (strengthRaw as never[]) : []),
+    strengthHistory: normalizeStrengthHistory(Array.isArray(strengthHistoryRaw) ? (strengthHistoryRaw as never[]) : []),
     readiness,
     topReady: topReadyMuscles(readiness),
     allTime: summarizeAllTimeStats(workoutActivities),

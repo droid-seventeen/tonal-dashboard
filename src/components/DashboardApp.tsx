@@ -32,8 +32,20 @@ type RaceStats = {
   remaining: number;
   complete: boolean;
 };
+type TrendPoint = {
+  label: string;
+  value: number;
+};
+type ReadinessLevel = "unknown" | "redline" | "rebuild" | "ready" | "prime";
 const RACE_TARGET_VOLUME = 500_000;
 const RACE_TARGET_LABEL = "500,000";
+const READINESS_LEVELS: Record<ReadinessLevel, { label: string; color: string; range: string }> = {
+  unknown: { label: "No signal", color: "#2b3038", range: "—" },
+  redline: { label: "Redline", color: "#fb7185", range: "0–39%" },
+  rebuild: { label: "Rebuild", color: "#f59e0b", range: "40–69%" },
+  ready: { label: "Ready", color: "#38bdf8", range: "70–84%" },
+  prime: { label: "Prime", color: "#10b981", range: "85–100%" }
+};
 
 export default function DashboardApp() {
   const [payload, setPayload] = useState<ApiPayload | null>(null);
@@ -212,6 +224,10 @@ function MemberDashboard({ data, onBack }: { data: TonalDashboard & { rank: numb
   const recentActivities = data.activities.slice(0, 8);
   const recentWorkoutCards = recentActivities.slice(0, 5);
   const racerStats = raceStats(data.allTime.totalVolume);
+  const strengthTrend = strengthTrendPoints(data);
+  const cumulativeVolumeTrend = cumulativeVolumePoints(data.weeklyVolume);
+  const strengthDelta = trendDelta(strengthTrend);
+  const cumulativeVolumeTotal = cumulativeVolumeTrend.at(-1)?.value ?? data.allTime.totalVolume;
   const detailsByActivity = useMemo(
     () => new Map((data.recentWorkoutDetails ?? []).map((detail) => [detail.activityId, detail])),
     [data.recentWorkoutDetails]
@@ -245,6 +261,44 @@ function MemberDashboard({ data, onBack }: { data: TonalDashboard & { rank: numb
         <MetricCard icon={<CalendarDays size={17} />} label="Track time" value={formatDuration(data.allTime.totalDuration)} />
       </div>
 
+      <div className="trend-grid">
+        <section className="panel trend-panel">
+          <div className="panel-heading trend-heading">
+            <div>
+              <h2>Strength score over time</h2>
+              <p>Overall Tonal strength score pulled from historical score snapshots.</p>
+            </div>
+            <span>{strengthDelta !== undefined ? `${strengthDelta >= 0 ? "+" : ""}${formatNumber(strengthDelta)} overall` : "No trend"}</span>
+          </div>
+          <TrendLineChart
+            dataChart="strength-score-history"
+            dataSeries="overall-strength"
+            emptyText="No strength history returned yet."
+            points={strengthTrend}
+            stroke="var(--gold)"
+          />
+        </section>
+
+        <section className="panel trend-panel">
+          <div className="panel-heading trend-heading">
+            <div>
+              <h2>Total weight moved over time</h2>
+              <p>Cumulative pounds moved across logged Tonal workouts.</p>
+            </div>
+            <span>{formatNumber(cumulativeVolumeTotal)} lb total</span>
+          </div>
+          <TrendLineChart
+            dataChart="cumulative-volume-history"
+            dataSeries="cumulative-volume"
+            emptyText="No volume history returned yet."
+            points={cumulativeVolumeTrend}
+            stroke="var(--success)"
+            valueSuffix=" lb"
+            zeroBaseline
+          />
+        </section>
+      </div>
+
       <div className="detail-grid">
         <section className="panel strength-panel">
           <div className="panel-heading"><h2>Engine rating</h2><span>Current tune</span></div>
@@ -257,11 +311,8 @@ function MemberDashboard({ data, onBack }: { data: TonalDashboard & { rank: numb
         </section>
 
         <section className="panel readiness-panel">
-          <div className="panel-heading"><h2>Pit crew recovery</h2><span>Ready muscles</span></div>
-          <div className="readiness-list">
-            {data.topReady.map(([muscle, score]) => <ReadinessRow key={muscle} muscle={muscle} score={score} />)}
-            {!data.topReady.length ? <Empty text="No readiness data returned." /> : null}
-          </div>
+          <div className="panel-heading"><h2>Muscle readiness</h2><span>Body readiness map</span></div>
+          <BodyReadinessDiagram readiness={data.readiness} />
         </section>
 
         <section className="panel weekly-panel">
@@ -442,8 +493,216 @@ function StrengthDial({ label, value, featured = false }: { label: string; value
   return <div className={featured ? "strength-dial strength-dial-featured" : "strength-dial"}><span>{label}</span><strong>{value ?? "—"}</strong></div>;
 }
 
+function TrendLineChart({
+  points,
+  dataChart,
+  dataSeries,
+  emptyText,
+  stroke,
+  valueSuffix = "",
+  zeroBaseline = false
+}: {
+  points: TrendPoint[];
+  dataChart: string;
+  dataSeries: string;
+  emptyText: string;
+  stroke: string;
+  valueSuffix?: string;
+  zeroBaseline?: boolean;
+}) {
+  const cleanPoints = points.filter((point) => Number.isFinite(point.value));
+  if (!cleanPoints.length) return <Empty text={emptyText} />;
+
+  const width = 520;
+  const height = 220;
+  const padding = 28;
+  const minRaw = Math.min(...cleanPoints.map((point) => point.value));
+  const maxRaw = Math.max(...cleanPoints.map((point) => point.value));
+  const spread = Math.max(1, maxRaw - minRaw);
+  const min = zeroBaseline ? 0 : Math.max(0, Math.floor(minRaw - spread * 0.4));
+  const max = maxRaw === minRaw ? maxRaw + 1 : Math.ceil(maxRaw + spread * 0.25);
+  const range = Math.max(1, max - min);
+  const baseY = height - padding;
+  const coords = cleanPoints.map((point, index) => {
+    const x = cleanPoints.length === 1
+      ? width / 2
+      : padding + (index / (cleanPoints.length - 1)) * (width - padding * 2);
+    const y = padding + ((max - point.value) / range) * (height - padding * 2);
+    return { ...point, x, y };
+  });
+  const pathD = coords.map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
+  const areaD = `${pathD} L ${coords.at(-1)?.x.toFixed(1)} ${baseY} L ${coords[0].x.toFixed(1)} ${baseY} Z`;
+  const last = cleanPoints.at(-1);
+
+  return (
+    <div className="trend-chart-wrap" style={{ "--trend-color": stroke } as React.CSSProperties}>
+      <svg aria-label={dataChart} className="trend-chart" data-chart={dataChart} role="img" viewBox={`0 0 ${width} ${height}`}>
+        <defs>
+          <linearGradient id={`${dataChart}-fade`} x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor={stroke} stopOpacity="0.24" />
+            <stop offset="100%" stopColor={stroke} stopOpacity="0.01" />
+          </linearGradient>
+        </defs>
+        {[0, 1, 2].map((line) => {
+          const y = padding + (line / 2) * (height - padding * 2);
+          return <line className="trend-grid-line" key={line} x1={padding} x2={width - padding} y1={y} y2={y} />;
+        })}
+        <path className="trend-area" d={areaD} fill={`url(#${dataChart}-fade)`} />
+        <path className="trend-line" d={pathD} data-series={dataSeries} fill="none" stroke={stroke} />
+        {coords.map((point) => (
+          <g className="trend-point" key={`${point.label}-${point.value}`}>
+            <title>{point.label}: {formatNumber(point.value)}{valueSuffix}</title>
+            <circle cx={point.x} cy={point.y} r="4.5" />
+          </g>
+        ))}
+        <text className="trend-y-label" x={padding} y={padding - 8}>{formatNumber(max)}</text>
+        <text className="trend-y-label" x={padding} y={baseY + 18}>{formatNumber(min)}</text>
+      </svg>
+      <div className="trend-chart-footer">
+        <span>{cleanPoints[0].label}</span>
+        <strong>{last ? `${formatNumber(last.value)}${valueSuffix}` : "—"}</strong>
+        <span>{last?.label ?? cleanPoints[0].label}</span>
+      </div>
+    </div>
+  );
+}
+
+function BodyReadinessDiagram({ readiness }: { readiness: Record<string, number> }) {
+  const readyMuscles = Object.entries(readiness)
+    .filter(([, value]) => typeof value === "number" && Number.isFinite(value))
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+
+  if (!readyMuscles.length) return <Empty text="No readiness data returned." />;
+
+  return (
+    <div className="body-readiness-layout">
+      <div className="body-readiness-stage">
+        <svg aria-label="Body readiness heat map" className="body-readiness-diagram" role="img" viewBox="0 0 560 390">
+          <defs>
+            <filter id="readiness-glow" x="-40%" y="-40%" width="180%" height="180%">
+              <feGaussianBlur stdDeviation="4" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
+          <text className="body-view-label" x="165" y="24">Front</text>
+          <text className="body-view-label" x="398" y="24">Back</text>
+          <BodyBase side="front" />
+          <BodyBase side="back" />
+
+          <MuscleZone labelX={165} labelY={86} muscle="Shoulders" score={readinessScore(readiness, "Shoulders")}>
+            <ellipse cx="126" cy="86" rx="26" ry="17" transform="rotate(-22 126 86)" />
+            <ellipse cx="204" cy="86" rx="26" ry="17" transform="rotate(22 204 86)" />
+            <ellipse cx="359" cy="86" rx="25" ry="16" transform="rotate(22 359 86)" />
+            <ellipse cx="437" cy="86" rx="25" ry="16" transform="rotate(-22 437 86)" />
+          </MuscleZone>
+          <MuscleZone labelX={165} labelY={116} muscle="Chest" score={readinessScore(readiness, "Chest")}>
+            <path d="M137 99 C146 82 163 86 165 106 L165 132 C149 132 136 120 137 99Z" />
+            <path d="M193 99 C184 82 167 86 165 106 L165 132 C181 132 194 120 193 99Z" />
+          </MuscleZone>
+          <MuscleZone labelX={165} labelY={164} muscle="Abs" score={readinessScore(readiness, "Abs")}>
+            <rect x="153" y="136" width="24" height="20" rx="8" />
+            <rect x="153" y="160" width="24" height="20" rx="8" />
+            <rect x="153" y="184" width="24" height="20" rx="8" />
+          </MuscleZone>
+          <MuscleZone labelX={165} labelY={176} muscle="Obliques" score={readinessScore(readiness, "Obliques")}>
+            <path d="M134 136 C145 146 149 177 139 204 C126 188 124 154 134 136Z" />
+            <path d="M196 136 C185 146 181 177 191 204 C204 188 206 154 196 136Z" />
+          </MuscleZone>
+          <MuscleZone labelX={103} labelY={154} muscle="Biceps" score={readinessScore(readiness, "Biceps")}>
+            <ellipse cx="107" cy="145" rx="13" ry="42" transform="rotate(12 107 145)" />
+            <ellipse cx="223" cy="145" rx="13" ry="42" transform="rotate(-12 223 145)" />
+          </MuscleZone>
+          <MuscleZone labelX={165} labelY={254} muscle="Quads" score={readinessScore(readiness, "Quads")}>
+            <path d="M139 216 C153 211 164 219 162 242 L154 309 C134 311 126 299 131 274Z" />
+            <path d="M191 216 C177 211 166 219 168 242 L176 309 C196 311 204 299 199 274Z" />
+          </MuscleZone>
+          <MuscleZone labelX={165} labelY={343} muscle="Calves" score={readinessScore(readiness, "Calves")}>
+            <path d="M134 305 C151 301 158 315 153 360 C136 363 128 353 131 331Z" />
+            <path d="M196 305 C179 301 172 315 177 360 C194 363 202 353 199 331Z" />
+            <path d="M360 305 C377 301 384 315 379 360 C362 363 354 353 357 331Z" />
+            <path d="M422 305 C405 301 398 315 403 360 C420 363 428 353 425 331Z" />
+          </MuscleZone>
+          <MuscleZone labelX={398} labelY={148} muscle="Back" score={readinessScore(readiness, "Back")}>
+            <path d="M366 99 C382 86 395 91 398 123 L398 205 C375 192 359 163 366 99Z" />
+            <path d="M430 99 C414 86 401 91 398 123 L398 205 C421 192 437 163 430 99Z" />
+          </MuscleZone>
+          <MuscleZone labelX={459} labelY={154} muscle="Triceps" score={readinessScore(readiness, "Triceps")}>
+            <ellipse cx="340" cy="145" rx="12" ry="42" transform="rotate(-12 340 145)" />
+            <ellipse cx="456" cy="145" rx="12" ry="42" transform="rotate(12 456 145)" />
+          </MuscleZone>
+          <MuscleZone labelX={398} labelY={224} muscle="Glutes" score={readinessScore(readiness, "Glutes")}>
+            <ellipse cx="384" cy="218" rx="22" ry="24" />
+            <ellipse cx="412" cy="218" rx="22" ry="24" />
+          </MuscleZone>
+          <MuscleZone labelX={398} labelY={276} muscle="Hamstrings" score={readinessScore(readiness, "Hamstrings")}>
+            <path d="M368 238 C386 232 395 244 391 274 L382 315 C362 316 356 302 361 276Z" />
+            <path d="M428 238 C410 232 401 244 405 274 L414 315 C434 316 440 302 435 276Z" />
+          </MuscleZone>
+        </svg>
+      </div>
+
+      <div className="readiness-sidecar">
+        <div className="readiness-legend" aria-label="Readiness color legend">
+          {(Object.keys(READINESS_LEVELS) as ReadinessLevel[]).filter((level) => level !== "unknown").map((level) => (
+            <span key={level}><i style={{ background: READINESS_LEVELS[level].color }} />{READINESS_LEVELS[level].label}<em>{READINESS_LEVELS[level].range}</em></span>
+          ))}
+        </div>
+        <div className="readiness-list compact-readiness-list">
+          {readyMuscles.slice(0, 5).map(([muscle, score]) => <ReadinessRow key={muscle} muscle={muscle} score={score} />)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BodyBase({ side }: { side: "front" | "back" }) {
+  const offset = side === "front" ? 0 : 233;
+  return (
+    <g className="body-base" aria-hidden="true">
+      <circle cx={165 + offset} cy="55" r="21" />
+      <path d={`M${165 + offset} 78 C${132 + offset} 78 ${121 + offset} 100 ${128 + offset} 128 L${113 + offset} 202 C${109 + offset} 222 ${126 + offset} 231 ${137 + offset} 212 L${149 + offset} 156 L${149 + offset} 220 L${130 + offset} 338 C${127 + offset} 357 ${148 + offset} 366 ${158 + offset} 348 L${165 + offset} 270 L${172 + offset} 348 C${182 + offset} 366 ${203 + offset} 357 ${200 + offset} 338 L${181 + offset} 220 L${181 + offset} 156 L${193 + offset} 212 C${204 + offset} 231 ${221 + offset} 222 ${217 + offset} 202 L${202 + offset} 128 C${209 + offset} 100 ${198 + offset} 78 ${165 + offset} 78Z`} />
+    </g>
+  );
+}
+
+function MuscleZone({
+  children,
+  labelX,
+  labelY,
+  muscle,
+  score
+}: {
+  children: React.ReactNode;
+  labelX: number;
+  labelY: number;
+  muscle: string;
+  score?: number;
+}) {
+  const level = readinessLevel(score);
+  const color = READINESS_LEVELS[level].color;
+  const tooltip = score === undefined ? `${muscle} no readiness signal` : `${muscle} ${Math.round(score)}%`;
+  return (
+    <g
+      className="body-muscle"
+      data-muscle={muscle}
+      data-readiness-level={level}
+      data-tooltip={tooltip}
+      style={{ "--muscle-color": color } as React.CSSProperties}
+      tabIndex={0}
+    >
+      <title>{score === undefined ? `${muscle} readiness unavailable` : `${muscle} ${Math.round(score)}% readiness`}</title>
+      {children}
+      <text className="readiness-hover-label" x={labelX} y={labelY}>{tooltip}</text>
+    </g>
+  );
+}
+
 function ReadinessRow({ muscle, score }: { muscle: string; score: number }) {
-  return <div className="readiness-row"><div><span>{muscle}</span><strong>{Math.round(score)}%</strong></div><div className="bar-track"><div style={{ width: `${score}%` }} /></div></div>;
+  const level = readinessLevel(score);
+  return <div className="readiness-row"><div><span>{muscle}</span><strong>{Math.round(score)}%</strong></div><div className="bar-track"><div style={{ background: READINESS_LEVELS[level].color, width: `${Math.max(3, Math.min(100, score))}%` }} /></div></div>;
 }
 
 function Notice({ children, tone = "info" }: { children: React.ReactNode; tone?: "info" | "error" }) {
@@ -460,6 +719,45 @@ function LeaderboardSkeleton() {
 
 function initials(name: string): string {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "?";
+}
+
+function strengthTrendPoints(data: TonalDashboard): TrendPoint[] {
+  const history = (data.strengthHistory ?? [])
+    .map((entry) => ({ label: formatShortDate(entry.activityTime), value: entry.overall }))
+    .filter((entry): entry is TrendPoint => typeof entry.value === "number" && Number.isFinite(entry.value));
+  if (history.length) return history;
+  return typeof data.strength.overall === "number" ? [{ label: "Current", value: data.strength.overall }] : [];
+}
+
+function cumulativeVolumePoints(weeks: TonalDashboard["weeklyVolume"]): TrendPoint[] {
+  let cumulative = 0;
+  return [...weeks]
+    .sort((a, b) => a.week.localeCompare(b.week))
+    .map((week) => {
+      cumulative += Math.max(0, Math.round(week.volume));
+      return { label: week.week, value: cumulative };
+    });
+}
+
+function trendDelta(points: TrendPoint[]): number | undefined {
+  if (points.length < 2) return undefined;
+  return Math.round(points.at(-1)!.value - points[0].value);
+}
+
+function readinessScore(readiness: Record<string, number>, muscle: string): number | undefined {
+  const exact = readiness[muscle];
+  if (typeof exact === "number" && Number.isFinite(exact)) return Math.max(0, Math.min(100, exact));
+  const normalizedMuscle = muscle.toLowerCase();
+  const match = Object.entries(readiness).find(([candidate, value]) => candidate.toLowerCase() === normalizedMuscle && typeof value === "number" && Number.isFinite(value));
+  return match ? Math.max(0, Math.min(100, match[1])) : undefined;
+}
+
+function readinessLevel(score?: number): ReadinessLevel {
+  if (score === undefined) return "unknown";
+  if (score < 40) return "redline";
+  if (score < 70) return "rebuild";
+  if (score < 85) return "ready";
+  return "prime";
 }
 
 function raceStats(value?: number | null): RaceStats {
@@ -480,4 +778,8 @@ function raceRemainingLabel(stats: RaceStats): string {
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(new Date(value));
+}
+
+function formatShortDate(value: string): string {
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(value));
 }

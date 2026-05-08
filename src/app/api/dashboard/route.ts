@@ -31,6 +31,7 @@ export async function GET() {
             member: { id: members[index].id, name: members[index].name },
             fetchedAt: new Date().toISOString(),
             strength: {},
+            strengthHistory: [],
             readiness: {},
             topReady: [],
             allTime: { totalVolume: 0, totalWorkouts: 0, totalReps: 0, totalDuration: 0 },

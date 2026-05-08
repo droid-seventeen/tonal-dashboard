@@ -132,6 +132,80 @@ describe("DashboardApp", () => {
     expect(fetch).toHaveBeenLastCalledWith("/api/dashboard");
   });
 
+  it("renders a body readiness heat map and historical performance charts", async () => {
+    window.history.replaceState(null, "", "/#member-taylor");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          configured: true,
+          members: [
+            {
+              member: { id: "taylor", name: "Taylor" },
+              fetchedAt: "2026-04-18T15:00:00.000Z",
+              strength: { overall: 525, upper: 560, core: 510, lower: 505 },
+              strengthHistory: [
+                { activityTime: "2026-01-15T12:00:00Z", overall: 470, upper: 500, core: 455, lower: 465 },
+                { activityTime: "2026-02-15T12:00:00Z", overall: 492, upper: 525, core: 480, lower: 480 },
+                { activityTime: "2026-03-15T12:00:00Z", overall: 525, upper: 560, core: 510, lower: 505 }
+              ],
+              readiness: {
+                Chest: 92,
+                Shoulders: 74,
+                Back: 81,
+                Triceps: 66,
+                Biceps: 58,
+                Abs: 88,
+                Obliques: 42,
+                Quads: 38,
+                Glutes: 71,
+                Hamstrings: 83,
+                Calves: 97
+              },
+              topReady: [["Calves", 97], ["Chest", 92], ["Abs", 88], ["Hamstrings", 83]],
+              allTime: { totalVolume: 7500, totalWorkouts: 3, totalReps: 300, totalDuration: 9000 },
+              weeklyVolume: [
+                { week: "2026-W01", workouts: 1, volume: 1000 },
+                { week: "2026-W02", workouts: 1, volume: 2500 },
+                { week: "2026-W03", workouts: 1, volume: 4000 }
+              ],
+              activities: [],
+              recentWorkoutDetails: [],
+              errors: []
+            }
+          ]
+        })
+      })
+    );
+
+    await act(async () => {
+      root.render(<DashboardApp />);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain("Muscle readiness");
+    expect(container.textContent).toContain("Body readiness map");
+    const diagram = container.querySelector('[aria-label="Body readiness heat map"]');
+    expect(diagram).not.toBeNull();
+    expect(container.querySelector('[data-muscle="Chest"] title')?.textContent).toBe("Chest 92% readiness");
+    expect(container.querySelector('[data-muscle="Quads"]')?.getAttribute("data-readiness-level")).toBe("redline");
+    expect(container.querySelector('[data-muscle="Chest"]')?.getAttribute("data-tooltip")).toBe("Chest 92%");
+
+    expect(container.textContent).toContain("Strength score over time");
+    expect(container.querySelector('[data-chart="strength-score-history"]')).not.toBeNull();
+    expect(container.querySelector('[data-series="overall-strength"]')).not.toBeNull();
+    expect(container.textContent).toContain("+55 overall");
+
+    expect(container.textContent).toContain("Total weight moved over time");
+    expect(container.querySelector('[data-chart="cumulative-volume-history"]')).not.toBeNull();
+    expect(container.textContent).toContain("7,500 lb total");
+  });
+
   it("turns detailed Tonal workout summaries into race telemetry", async () => {
     window.history.replaceState(null, "", "/#member-taylor");
     vi.stubGlobal(
