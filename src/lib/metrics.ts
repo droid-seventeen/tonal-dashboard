@@ -208,9 +208,9 @@ export const LEADERBOARD_CATEGORIES: LeaderboardCategoryDefinition[] = [
   },
   {
     id: "thisMonthVolume",
-    label: "This month",
-    standingsTitle: "This month standings",
-    description: "Current calendar month"
+    label: "Last 30 days",
+    standingsTitle: "Last 30 days standings",
+    description: "Rolling 30-day volume"
   },
   {
     id: "thisWeekVolume",
@@ -839,7 +839,7 @@ function categoryValue(member: DashboardMetricMember, category: LeaderboardCateg
       return period === "current" ? member.allTime.totalVolume : Math.max(0, member.allTime.totalVolume - currentWeekVolume);
     }
     case "thisMonthVolume":
-      return monthlyVolume(member, now, period === "current" ? 0 : -1);
+      return rollingDailyVolume(member, now, period === "current" ? 0 : -30);
     case "thisWeekVolume":
       return weeklyStats(member, isoWeekKey(offsetDateByWeeks(now, period === "current" ? 0 : -1))).volume;
     case "workouts": {
@@ -858,7 +858,7 @@ function categorySuffix(category: LeaderboardCategoryId): string {
     case "allTimeVolume":
       return "lb all-time";
     case "thisMonthVolume":
-      return "lb this month";
+      return "lb last 30 days";
     case "thisWeekVolume":
       return "lb this week";
     case "workouts":
@@ -883,15 +883,18 @@ function weeklyStats(member: DashboardMetricMember, week: string): WeeklyVolume 
   return member.weeklyVolume.find((entry) => entry.week === week) ?? { week, workouts: 0, volume: 0 };
 }
 
-function monthlyVolume(member: DashboardMetricMember, now: Date, monthOffset: number): number {
-  const target = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + monthOffset, 1));
-  const year = target.getUTCFullYear();
-  const month = target.getUTCMonth();
-  return member.weeklyVolume.reduce((sum, week) => {
-    const weekStart = isoWeekStartDate(week.week);
-    if (!weekStart) return sum;
-    return weekStart.getUTCFullYear() === year && weekStart.getUTCMonth() === month ? sum + Math.round(week.volume) : sum;
+function rollingDailyVolume(member: DashboardMetricMember, now: Date, dayOffset: number): number {
+  const end = offsetDateByDays(now, dayOffset);
+  const start = offsetDateByDays(end, -29);
+  const startKey = utcDateKey(start);
+  const endKey = utcDateKey(end);
+  return memberCalendarDays(member).reduce((sum, day) => {
+    return day.date >= startKey && day.date <= endKey ? sum + day.volume : sum;
   }, 0);
+}
+
+function memberCalendarDays(member: DashboardMetricMember): TrainingCalendarDay[] {
+  return normalizeCalendarDays(member.calendarDays?.length ? member.calendarDays : summarizeCalendarDays(member.activities ?? []));
 }
 
 function fairnessAdjustedScore(member: DashboardMetricMember, week: string): number {
@@ -954,6 +957,16 @@ function offsetDateByWeeks(date: Date, weeks: number): Date {
   const copy = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
   copy.setUTCDate(copy.getUTCDate() + weeks * 7);
   return copy;
+}
+
+function offsetDateByDays(date: Date, days: number): Date {
+  const copy = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  copy.setUTCDate(copy.getUTCDate() + days);
+  return copy;
+}
+
+function utcDateKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
 }
 
 function offsetIsoWeekKey(week: string, offset: number): string {

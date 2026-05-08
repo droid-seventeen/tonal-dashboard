@@ -16,6 +16,7 @@ import {
   LEADERBOARD_CATEGORIES,
   latestDashboardTimestamp,
   rankMembersForCategory,
+  summarizeCalendarDays,
   type MemberDetailInsights,
   type LeaderboardCategoryId,
   type RankedCategoryEntry
@@ -41,6 +42,12 @@ type RecentSet = NonNullable<RecentMovement["sets"]>[number];
 type TrendPoint = {
   label: string;
   value: number;
+};
+type ChartBucket = {
+  key: string;
+  label: string;
+  endTime: number;
+  kind: "day" | "week";
 };
 type ReadinessLevel = "unknown" | "redline" | "rebuild" | "ready" | "prime";
 type RankedTonalMember = RankedCategoryEntry<TonalDashboard>;
@@ -196,17 +203,16 @@ function LeaderboardView({
   const champion = leaderboard[0];
   const categoryDefinition = LEADERBOARD_CATEGORIES.find((candidate) => candidate.id === category) ?? LEADERBOARD_CATEGORIES[0];
   const chartNow = updatedAt ?? latestDashboardTimestamp(leaderboard) ?? new Date();
-  const chartWeeks = familyChartWeeks(leaderboard, category, chartNow);
-  const chartWeekSet = new Set(chartWeeks);
+  const chartBuckets = familyChartBuckets(leaderboard, category, chartNow);
   const totalFamilyVolume = leaderboard.reduce((sum, member) => sum + member.allTime.totalVolume, 0);
   const totalFamilyWorkouts = leaderboard.reduce((sum, member) => sum + member.allTime.totalWorkouts, 0);
   const familyWeeklyPeak = Math.max(
     0,
-    ...leaderboard.flatMap((member) => weeklyVolumePoints(member.weeklyVolume).filter((point) => chartWeekSet.has(point.label)).map((point) => point.value))
+    ...leaderboard.flatMap((member) => familyVolumePoints(member, chartBuckets).map((point) => point.value))
   );
   const familyStrengthPeak = Math.max(
     0,
-    ...leaderboard.flatMap((member) => familyStrengthScorePoints(member, chartWeeks).map((point) => point.value))
+    ...leaderboard.flatMap((member) => familyStrengthScorePoints(member, chartBuckets).map((point) => point.value))
   );
 
   return (
@@ -296,7 +302,7 @@ function LeaderboardView({
           </div>
           <span>{familyStrengthPeak ? `${formatNumber(familyStrengthPeak)} peak score` : "No strength data"}</span>
         </div>
-        <FamilyStrengthScoreOverlay members={leaderboard} weeks={chartWeeks} />
+        <FamilyStrengthScoreOverlay buckets={chartBuckets} members={leaderboard} />
       </section>
 
       <section className="panel family-weekly-panel">
@@ -307,7 +313,7 @@ function LeaderboardView({
           </div>
           <span>{familyWeeklyPeak ? `${formatNumber(familyWeeklyPeak)} lb peak week` : "No weekly data"}</span>
         </div>
-        <FamilyWeeklyVolumeOverlay members={leaderboard} weeks={chartWeeks} />
+        <FamilyWeeklyVolumeOverlay buckets={chartBuckets} members={leaderboard} />
       </section>
     </section>
   );
@@ -422,10 +428,7 @@ function MemberDashboard({ avatarUrl, data, onBack }: { avatarUrl?: string; data
         </div>
       </section>
 
-      <div className="lower-insight-grid">
-        <BestRecentWorkoutPanel insights={detailInsights} />
-        <FavoriteMovementsPanel insights={detailInsights} />
-      </div>
+      <FavoriteMovementsPanel insights={detailInsights} />
     </section>
   );
 }
@@ -668,54 +671,6 @@ function TrainingStylePanel({ insights }: { insights: MemberDetailInsights }) {
   );
 }
 
-function BestRecentWorkoutPanel({ insights }: { insights: MemberDetailInsights }) {
-  const { bestVolumeWorkout, densityWorkout, standoutRecord } = insights.recentHighlights;
-
-  return (
-    <section className="panel best-recent-panel" data-section="best-recent-workout">
-      <div className="panel-heading"><h2>Best recent workout</h2><span>Standouts</span></div>
-      <div className="recent-highlight-grid">
-        {bestVolumeWorkout ? (
-          <WorkoutHighlightCard
-            label="Highest volume"
-            primary={bestVolumeWorkout.volume ? `${formatNumber(bestVolumeWorkout.volume)} lb` : "—"}
-            secondary={workoutMeta(bestVolumeWorkout)}
-            title={bestVolumeWorkout.title}
-          />
-        ) : null}
-        {densityWorkout ? (
-          <WorkoutHighlightCard
-            label="Most efficient"
-            primary={densityWorkout.density ? `${formatNumber(densityWorkout.density)} lb/min` : "—"}
-            secondary={workoutMeta(densityWorkout)}
-            title={densityWorkout.title}
-          />
-        ) : null}
-        {standoutRecord ? (
-          <WorkoutHighlightCard
-            label={standoutRecord.label}
-            primary={`${formatNumber(standoutRecord.value)} ${standoutRecord.unit}`}
-            secondary={recordContext(standoutRecord)}
-            title={standoutRecord.movementName ?? standoutRecord.workoutName ?? "Recent standout"}
-          />
-        ) : null}
-        {!bestVolumeWorkout && !densityWorkout && !standoutRecord ? <Empty text="Recent workout detail will surface standout sessions here." /> : null}
-      </div>
-    </section>
-  );
-}
-
-function WorkoutHighlightCard({ label, primary, secondary, title }: { label: string; primary: string; secondary: string; title: string }) {
-  return (
-    <article className="workout-highlight-card">
-      <span>{label}</span>
-      <h3>{title}</h3>
-      <strong>{primary}</strong>
-      <em>{secondary}</em>
-    </article>
-  );
-}
-
 function WorkoutDnaCard({
   activity,
   detail
@@ -827,15 +782,6 @@ function recordContext(record: NonNullable<MemberDetailInsights["records"][keyof
   return context.join(" • ") || "Recent workout detail";
 }
 
-function workoutMeta(workout: { date?: string; reps?: number; duration?: number }): string {
-  const details = [
-    workout.date ? formatDate(workout.date) : undefined,
-    workout.reps ? `${formatNumber(workout.reps)} reps` : undefined,
-    workout.duration ? formatDuration(workout.duration) : undefined
-  ].filter(Boolean);
-  return details.join(" • ") || "Recent workout";
-}
-
 function prettifyLabel(value?: string | null): string {
   if (!value) return "Workout";
   return value
@@ -930,33 +876,33 @@ function TrendLineChart({
   );
 }
 
-function FamilyWeeklyVolumeOverlay({ members, weeks }: { members: RankedTonalMember[]; weeks: string[] }) {
+function FamilyWeeklyVolumeOverlay({ buckets, members }: { buckets: ChartBucket[]; members: RankedTonalMember[] }) {
   const series = members
     .map((member, index) => ({
       id: member.member.id,
       name: member.member.name,
       color: FAMILY_SERIES_COLORS[index % FAMILY_SERIES_COLORS.length],
-      points: weeklyVolumePoints(member.weeklyVolume)
+      points: familyVolumePoints(member, buckets)
     }))
     .filter((member) => member.points.length);
 
-  if (!series.length || !weeks.length) return <Empty text="No weekly volume data yet." />;
+  if (!series.length || !buckets.length) return <Empty text="No weekly volume data yet." />;
 
-  const weekSet = new Set(weeks);
   const width = 760;
   const height = 260;
   const padding = 34;
-  const max = Math.max(1, ...series.flatMap((member) => member.points.filter((point) => weekSet.has(point.label)).map((point) => point.value)));
+  const max = Math.max(1, ...series.flatMap((member) => member.points.map((point) => point.value)));
   const baseY = height - padding;
   const range = Math.max(1, Math.ceil(max * 1.12));
-  const xForWeek = (index: number) => weeks.length === 1 ? width / 2 : padding + (index / (weeks.length - 1)) * (width - padding * 2);
+  const xForBucket = (index: number) => buckets.length === 1 ? width / 2 : padding + (index / (buckets.length - 1)) * (width - padding * 2);
   const yForValue = (value: number) => padding + ((range - value) / range) * (height - padding * 2);
   const chartSeries = series.map((member) => {
-    const byWeek = new Map(member.points.map((point) => [point.label, point.value]));
-    const coords = weeks.map((week, index) => ({ label: week, value: byWeek.get(week) ?? 0, x: xForWeek(index), y: yForValue(byWeek.get(week) ?? 0) }));
+    const coords = member.points.map((point, index) => ({ ...point, x: xForBucket(index), y: yForValue(point.value) }));
     const pathD = coords.map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
     return { ...member, coords, pathD, latest: coords.at(-1) };
   });
+  const xAxisLabel = buckets[0]?.kind === "day" ? "Day" : "Week";
+  const volumeAxisLabel = buckets[0]?.kind === "day" ? "Daily pounds moved" : "Weekly pounds moved";
 
   return (
     <div className="family-weekly-chart-wrap">
@@ -970,7 +916,7 @@ function FamilyWeeklyVolumeOverlay({ members, weeks }: { members: RankedTonalMem
             <title>{member.name} weekly volume</title>
             <path className="family-weekly-line" d={member.pathD} data-series={`weekly-volume-${member.id}`} fill="none" stroke={member.color} />
             {member.coords.map((point) => (
-              <circle className="family-weekly-point" cx={point.x} cy={point.y} key={`${member.id}-${point.label}`} r="3.8">
+              <circle className="family-weekly-point" cx={point.x} cy={point.y} key={`${member.id}-${point.sortKey}`} r="3.8">
                 <title>{member.name} {point.label}: {formatNumber(point.value)} lb</title>
               </circle>
             ))}
@@ -979,12 +925,12 @@ function FamilyWeeklyVolumeOverlay({ members, weeks }: { members: RankedTonalMem
         <text className="trend-y-label" x={padding} y={padding - 10}>{formatNumber(range)}</text>
         <text className="trend-y-label" x={padding} y={baseY + 18}>0</text>
         <text className="trend-axis-label trend-axis-label-y" transform={`translate(13 ${height / 2}) rotate(-90)`}>Volume</text>
-        <text className="trend-axis-label trend-axis-label-x" x={width / 2} y={height - 5}>Week</text>
+        <text className="trend-axis-label trend-axis-label-x" x={width / 2} y={height - 5}>{xAxisLabel}</text>
       </svg>
       <div className="family-weekly-axis-row">
-        <span>{weeks[0]}</span>
-        <strong>Weekly pounds moved</strong>
-        <span>{weeks.at(-1)}</span>
+        <span>{buckets[0].label}</span>
+        <strong>{volumeAxisLabel}</strong>
+        <span>{buckets.at(-1)?.label}</span>
       </div>
       <div className="family-weekly-legend">
         {chartSeries.map((member) => (
@@ -999,17 +945,17 @@ function FamilyWeeklyVolumeOverlay({ members, weeks }: { members: RankedTonalMem
   );
 }
 
-function FamilyStrengthScoreOverlay({ members, weeks }: { members: RankedTonalMember[]; weeks: string[] }) {
+function FamilyStrengthScoreOverlay({ buckets, members }: { buckets: ChartBucket[]; members: RankedTonalMember[] }) {
   const series = members
     .map((member, index) => ({
       id: member.member.id,
       name: member.member.name,
       color: FAMILY_SERIES_COLORS[index % FAMILY_SERIES_COLORS.length],
-      points: familyStrengthScorePoints(member, weeks)
+      points: familyStrengthScorePoints(member, buckets)
     }))
     .filter((member) => member.points.length);
 
-  if (!series.length || !weeks.length) return <Empty text="No overall strength score history returned yet." />;
+  if (!series.length || !buckets.length) return <Empty text="No overall strength score history returned yet." />;
 
   const width = 760;
   const height = 260;
@@ -1022,9 +968,10 @@ function FamilyStrengthScoreOverlay({ members, weeks }: { members: RankedTonalMe
   const max = maxRaw === minRaw ? maxRaw + 1 : Math.ceil(maxRaw + spread * 0.25);
   const range = Math.max(1, max - min);
   const baseY = height - padding;
+  const bucketIndex = new Map(buckets.map((bucket, index) => [bucket.key, index]));
   const xForKey = (key: string) => {
-    const index = weeks.indexOf(key);
-    return weeks.length === 1 ? width / 2 : padding + (index / (weeks.length - 1)) * (width - padding * 2);
+    const index = bucketIndex.get(key) ?? 0;
+    return buckets.length === 1 ? width / 2 : padding + (index / (buckets.length - 1)) * (width - padding * 2);
   };
   const yForValue = (value: number) => padding + ((max - value) / range) * (height - padding * 2);
   const chartSeries = series.map((member) => {
@@ -1045,7 +992,7 @@ function FamilyStrengthScoreOverlay({ members, weeks }: { members: RankedTonalMe
           <g className="family-strength-series" key={member.id} style={{ "--series-color": member.color } as React.CSSProperties}>
             <title>{member.name} strength score history</title>
             <path className="family-strength-line" d={member.pathD} data-series={`strength-score-${member.id}`} fill="none" stroke={member.color}>
-              {weeks.length === 1 ? <title>{member.name} latest: {formatNumber(member.latest?.value)} strength score</title> : null}
+              {buckets.length === 1 ? <title>{member.name} latest: {formatNumber(member.latest?.value)} strength score</title> : null}
             </path>
             {member.coords.map((point) => (
               <circle className="family-strength-point" cx={point.x} cy={point.y} key={`${member.id}-${point.sortKey}`} r="3.8">
@@ -1060,9 +1007,9 @@ function FamilyStrengthScoreOverlay({ members, weeks }: { members: RankedTonalMe
         <text className="trend-axis-label trend-axis-label-x" x={width / 2} y={height - 5}>Snapshot</text>
       </svg>
       <div className="family-strength-axis-row">
-        <span>{weeks[0]}</span>
+        <span>{buckets[0].label}</span>
         <strong>Overall strength score</strong>
-        <span>{weeks.at(-1)}</span>
+        <span>{buckets.at(-1)?.label}</span>
       </div>
       <div className="family-strength-legend">
         {chartSeries.map((member) => (
@@ -1076,40 +1023,90 @@ function FamilyStrengthScoreOverlay({ members, weeks }: { members: RankedTonalMe
   );
 }
 
-function familyChartWeeks(members: RankedTonalMember[], category: LeaderboardCategoryId, now: Date): string[] {
+function familyChartBuckets(members: RankedTonalMember[], category: LeaderboardCategoryId, now: Date): ChartBucket[] {
+  if (category === "thisMonthVolume" || category === "fairnessAdjusted") return rollingDayBuckets(now, 30);
+  if (category === "thisWeekVolume" && familyHasDailyTrainingData(members)) return currentWeekDayBuckets(now);
+
   const availableWeeks = Array.from(new Set(members.flatMap((member) => member.weeklyVolume.map((week) => week.week).filter(isIsoWeekKey))))
     .sort((a, b) => a.localeCompare(b));
 
-  if (category === "thisWeekVolume" || category === "fairnessAdjusted") return [isoWeekKey(now)];
-  if (category === "thisMonthVolume") {
-    const monthWeeks = availableWeeks.filter((week) => isoWeekOverlapsMonth(week, now));
-    return monthWeeks.length ? monthWeeks : [isoWeekKey(now)];
-  }
-  return availableWeeks;
+  if (category === "thisWeekVolume") return [isoWeekKey(now)].map(weekChartBucket);
+  return availableWeeks.map(weekChartBucket);
 }
 
-function familyStrengthScorePoints(member: TonalDashboard, weeks: string[]): Array<TrendPoint & { sortKey: string }> {
-  const snapshots = strengthSnapshotsForWeeks(member, weeks);
-  if (!snapshots.length || !weeks.length) return [];
+function rollingDayBuckets(now: Date, dayCount: number): ChartBucket[] {
+  const end = startOfUtcDay(now);
+  return dayChartBuckets(addUtcDays(end, 1 - dayCount), dayCount);
+}
+
+function currentWeekDayBuckets(now: Date): ChartBucket[] {
+  return dayChartBuckets(isoWeekStartDate(isoWeekKey(now)) ?? startOfUtcDay(now), 7);
+}
+
+function dayChartBuckets(start: Date, dayCount: number): ChartBucket[] {
+  return Array.from({ length: dayCount }, (_, index) => {
+    const date = addUtcDays(start, index);
+    const end = new Date(date);
+    end.setUTCHours(23, 59, 59, 999);
+    const key = utcDateKey(date);
+    return { key, label: formatDateKeyLabel(key), endTime: end.getTime(), kind: "day" };
+  });
+}
+
+function weekChartBucket(week: string): ChartBucket {
+  return { key: week, label: week, endTime: isoWeekEndDate(week)?.getTime() ?? 0, kind: "week" };
+}
+
+function familyHasDailyTrainingData(members: RankedTonalMember[]): boolean {
+  return members.some((member) => member.calendarDays?.length || member.activities?.some((activity) => activity.activityTime));
+}
+
+function familyVolumePoints(member: TonalDashboard, buckets: ChartBucket[]): Array<TrendPoint & { sortKey: string }> {
+  const dailyVolume = new Map<string, number>();
+  const weeklyVolume = new Map<string, number>();
+
+  if (buckets.some((bucket) => bucket.kind === "day")) {
+    for (const day of memberDailyTrainingDays(member)) {
+      dailyVolume.set(day.date, (dailyVolume.get(day.date) ?? 0) + Math.max(0, Math.round(day.volume)));
+    }
+  }
+  if (buckets.some((bucket) => bucket.kind === "week")) {
+    for (const week of member.weeklyVolume) {
+      weeklyVolume.set(week.week, Math.max(0, Math.round(week.volume)));
+    }
+  }
+
+  return buckets.map((bucket) => ({
+    label: bucket.label,
+    sortKey: bucket.key,
+    value: bucket.kind === "day" ? dailyVolume.get(bucket.key) ?? 0 : weeklyVolume.get(bucket.key) ?? 0
+  }));
+}
+
+function memberDailyTrainingDays(member: TonalDashboard): TonalDashboard["calendarDays"] {
+  return member.calendarDays?.length ? member.calendarDays : summarizeCalendarDays(member.activities ?? []);
+}
+
+function familyStrengthScorePoints(member: TonalDashboard, buckets: ChartBucket[]): Array<TrendPoint & { sortKey: string }> {
+  const snapshots = strengthSnapshotsForBuckets(member, buckets);
+  if (!snapshots.length || !buckets.length) return [];
 
   let latest: { value: number } | undefined;
   let snapshotIndex = 0;
   const points: Array<TrendPoint & { sortKey: string }> = [];
 
-  for (const week of weeks) {
-    const weekEnd = isoWeekEndDate(week);
-    if (!weekEnd) continue;
-    while (snapshotIndex < snapshots.length && snapshots[snapshotIndex].time <= weekEnd.getTime()) {
+  for (const bucket of buckets) {
+    while (snapshotIndex < snapshots.length && snapshots[snapshotIndex].time <= bucket.endTime) {
       latest = snapshots[snapshotIndex];
       snapshotIndex += 1;
     }
-    if (latest) points.push({ label: week, sortKey: week, value: latest.value });
+    if (latest) points.push({ label: bucket.label, sortKey: bucket.key, value: latest.value });
   }
 
   return points;
 }
 
-function strengthSnapshotsForWeeks(member: TonalDashboard, weeks: string[]): Array<{ time: number; value: number; order: number }> {
+function strengthSnapshotsForBuckets(member: TonalDashboard, buckets: ChartBucket[]): Array<{ time: number; value: number; order: number }> {
   const snapshots = (member.strengthHistory ?? [])
     .map((entry, index) => {
       const time = timestamp(entry.activityTime);
@@ -1119,8 +1116,7 @@ function strengthSnapshotsForWeeks(member: TonalDashboard, weeks: string[]): Arr
     .filter((entry): entry is { time: number; value: number; order: number } => Boolean(entry));
   const current = positiveStrengthScore(member.strength.overall);
   if (current !== undefined) {
-    const lastWeek = weeks.at(-1);
-    const currentTime = timestamp(member.fetchedAt) ?? (lastWeek ? isoWeekEndDate(lastWeek)?.getTime() : undefined);
+    const currentTime = timestamp(member.fetchedAt) ?? buckets.at(-1)?.endTime;
     if (currentTime !== undefined) snapshots.push({ time: currentTime, value: current, order: Number.MAX_SAFE_INTEGER });
   }
 
@@ -1366,12 +1362,6 @@ function cumulativeVolumePoints(weeks: TonalDashboard["weeklyVolume"]): TrendPoi
     });
 }
 
-function weeklyVolumePoints(weeks: TonalDashboard["weeklyVolume"]): TrendPoint[] {
-  return [...weeks]
-    .sort((a, b) => a.week.localeCompare(b.week))
-    .map((week) => ({ label: week.week, value: Math.max(0, Math.round(week.volume)) }));
-}
-
 function trendDelta(points: TrendPoint[]): number | undefined {
   if (points.length < 2) return undefined;
   return Math.round(points.at(-1)!.value - points[0].value);
@@ -1389,16 +1379,6 @@ function timestamp(value?: string | null): number | undefined {
 
 function isIsoWeekKey(value: string): boolean {
   return /^\d{4}-W\d{2}$/.test(value) && Boolean(isoWeekStartDate(value));
-}
-
-function isoWeekOverlapsMonth(week: string, month: Date): boolean {
-  const start = isoWeekStartDate(week);
-  if (!start) return false;
-  const end = isoWeekEndDate(week);
-  if (!end) return false;
-  const monthStart = new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth(), 1));
-  const nextMonthStart = new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth() + 1, 1));
-  return start.getTime() < nextMonthStart.getTime() && end.getTime() >= monthStart.getTime();
 }
 
 function isoWeekEndDate(week: string): Date | undefined {
@@ -1422,6 +1402,34 @@ function isoWeekStartDate(week: string): Date | undefined {
   monday.setUTCDate(jan4.getUTCDate() + 1 - jan4Day + (weekNumber - 1) * 7);
   monday.setUTCHours(0, 0, 0, 0);
   return monday;
+}
+
+function startOfUtcDay(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+}
+
+function addUtcDays(date: Date, days: number): Date {
+  const copy = startOfUtcDay(date);
+  copy.setUTCDate(copy.getUTCDate() + days);
+  return copy;
+}
+
+function utcDateKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function formatDateKeyLabel(value: string): string {
+  const date = parseDateKey(value);
+  return date
+    ? new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(date)
+    : value;
+}
+
+function parseDateKey(value: string): Date | undefined {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return undefined;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
 function readinessScore(readiness: Record<string, number>, muscle: string): number | undefined {

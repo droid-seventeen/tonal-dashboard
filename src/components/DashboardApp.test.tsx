@@ -225,6 +225,12 @@ describe("DashboardApp", () => {
                 { week: "2026-W19", workouts: 2, volume: 14000 },
                 { week: "2026-W20", workouts: 1, volume: 8000 }
               ],
+              calendarDays: [
+                { date: "2026-04-10", workouts: 1, volume: 9000, reps: 90, duration: 1800, intensity: 3 },
+                { date: "2026-04-20", workouts: 1, volume: 4500, reps: 45, duration: 1500, intensity: 2 },
+                { date: "2026-05-12", workouts: 1, volume: 3000, reps: 30, duration: 1200, intensity: 1 },
+                { date: "2026-05-14", workouts: 1, volume: 8000, reps: 80, duration: 2100, intensity: 4 }
+              ],
               activities: [],
               recentWorkoutDetails: [],
               errors: []
@@ -244,6 +250,11 @@ describe("DashboardApp", () => {
               weeklyVolume: [
                 { week: "2026-W19", workouts: 1, volume: 2000 },
                 { week: "2026-W20", workouts: 3, volume: 12000 }
+              ],
+              calendarDays: [
+                { date: "2026-04-10", workouts: 1, volume: 50000, reps: 500, duration: 3600, intensity: 5 },
+                { date: "2026-05-13", workouts: 1, volume: 6000, reps: 60, duration: 1800, intensity: 3 },
+                { date: "2026-05-14", workouts: 2, volume: 6000, reps: 60, duration: 1800, intensity: 3 }
               ],
               activities: [],
               recentWorkoutDetails: [],
@@ -275,7 +286,9 @@ describe("DashboardApp", () => {
     expect(container.textContent).toContain("Last updated");
     expect(container.textContent).toContain("May 14, 10:05 AM UTC");
     expect(container.textContent).toContain("All-time");
-    expect(container.textContent).toContain("This month");
+    expect(container.textContent).toContain("Last 30 days");
+    expect(container.textContent).toContain("Rolling 30-day volume");
+    expect(container.textContent).not.toContain("This month");
     expect(container.textContent).toContain("This week");
     expect(container.textContent).toContain("Workouts");
     expect(container.textContent).toContain("Fairness adjusted");
@@ -316,6 +329,27 @@ describe("DashboardApp", () => {
     ]);
     expect(container.querySelector('[data-series="strength-score-taylor"]')?.textContent).not.toContain("0 strength score");
 
+    const last30Tab = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Last 30 days"));
+    await act(async () => {
+      last30Tab?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    const last30Rows = Array.from(container.querySelectorAll(".leader-row"));
+    expect(container.textContent).toContain("Last 30 days standings");
+    expect(last30Rows[0].textContent).toContain("Taylor");
+    expect(last30Rows[0].textContent).toContain("15,500");
+    expect(last30Rows[0].textContent).toContain("lb last 30 days");
+    expect(last30Rows[1].textContent).toContain("Casey");
+    expect(last30Rows[1].textContent).toContain("12,000");
+    expect(Array.from(container.querySelectorAll(".family-weekly-axis-row span")).map((span) => span.textContent)).toEqual([
+      "Apr 15",
+      "May 14"
+    ]);
+    expect(Array.from(container.querySelectorAll(".family-strength-axis-row span")).map((span) => span.textContent)).toEqual([
+      "Apr 15",
+      "May 14"
+    ]);
+    expect(container.textContent).toContain("Taylor Apr 20: 4,500 lb");
+
     const thisWeekTab = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("This week"));
     await act(async () => {
       thisWeekTab?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
@@ -328,14 +362,16 @@ describe("DashboardApp", () => {
     expect(weeklyRows[1].textContent).toContain("Taylor");
     expect(weeklyRows[1].textContent).toContain("↓ 1");
     expect(Array.from(container.querySelectorAll(".family-weekly-axis-row span")).map((span) => span.textContent)).toEqual([
-      "2026-W20",
-      "2026-W20"
+      "May 11",
+      "May 17"
     ]);
     expect(Array.from(container.querySelectorAll(".family-strength-axis-row span")).map((span) => span.textContent)).toEqual([
-      "2026-W20",
-      "2026-W20"
+      "May 11",
+      "May 17"
     ]);
-    expect(container.querySelector('[data-series="strength-score-taylor"]')?.textContent).toContain("520 strength score");
+    expect(container.textContent).toContain("Taylor May 12: 3,000 lb");
+    expect(container.textContent).toContain("Casey May 13: 6,000 lb");
+    expect(container.textContent).toContain("Taylor May 14: 520 strength score");
 
     const fairnessTab = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Fairness adjusted"));
     await act(async () => {
@@ -343,6 +379,17 @@ describe("DashboardApp", () => {
     });
     expect(container.textContent).toContain("Fairness adjusted standings");
     expect(container.textContent).toContain("fairness pts");
+    expect(container.textContent).not.toContain("No weekly data");
+    expect(container.textContent).not.toContain("No strength data");
+    expect(Array.from(container.querySelectorAll(".family-weekly-axis-row span")).map((span) => span.textContent)).toEqual([
+      "Apr 15",
+      "May 14"
+    ]);
+    expect(Array.from(container.querySelectorAll(".family-strength-axis-row span")).map((span) => span.textContent)).toEqual([
+      "Apr 15",
+      "May 14"
+    ]);
+    expect(container.textContent).toContain("Taylor Apr 20: 4,500 lb");
     expectNoRaceMetaphor(container);
   });
 
@@ -726,6 +773,9 @@ describe("DashboardApp", () => {
     expect(container.querySelector('[data-section="body-balance-analysis"]')).toBeNull();
     expect(container.textContent).not.toContain("Body balance");
     expect(container.textContent).not.toContain("Workout distribution by target area");
+    expect(container.querySelector('[data-section="best-recent-workout"]')).toBeNull();
+    expect(container.textContent).not.toContain("Best recent workout");
+    expect(container.textContent).not.toContain("Most efficient");
 
     const heroSection = container.querySelector('[data-section="member-hero"]');
     const recordsSection = container.querySelector('[data-section="personal-records"]');
