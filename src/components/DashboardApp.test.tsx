@@ -149,6 +149,11 @@ describe("DashboardApp", () => {
     expect(container.textContent).toContain("#2");
     expect(container.textContent).toContain("20 workouts");
     expect(container.textContent).toContain("lb all-time");
+    expect(container.textContent).toContain("Family weekly volume");
+    expect(container.textContent).toContain("Everyone's weekly pounds moved on the same time axis.");
+    expect(container.querySelector('[data-chart="family-weekly-volume-overlay"]')).not.toBeNull();
+    expect(container.querySelector('[data-series="weekly-volume-taylor"]')).not.toBeNull();
+    expect(container.querySelector('[data-series="weekly-volume-casey"]')).not.toBeNull();
 
     const thisWeekTab = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("This week"));
     await act(async () => {
@@ -252,12 +257,26 @@ describe("DashboardApp", () => {
     });
 
     expect(container.textContent).toContain("Muscle readiness");
-    expect(container.textContent).toContain("Body readiness map");
-    const diagram = container.querySelector('[aria-label="Body readiness heat map"]');
+    expect(container.textContent).toContain("11 muscles tracked");
+    expect(container.textContent).toContain("Readiness scores");
+    expect(container.textContent).not.toContain("Readiness matrix");
+    expect(container.querySelector(".readiness-matrix")).toBeNull();
+    expect(container.querySelector('[aria-label="Readiness color legend"]')).toBeNull();
+    const diagram = container.querySelector('[data-chart="muscle-readiness-body-map"]');
     expect(diagram).not.toBeNull();
+    expect(diagram?.getAttribute("aria-label")).toBe("Body muscle readiness diagram");
+    expect(container.querySelectorAll("[data-readiness-chip]").length).toBe(11);
+    expect(container.querySelector('[data-readiness-chip="Chest"]')?.textContent).toContain("92%");
+    expect(container.querySelector('[data-readiness-chip="Calves"]')?.textContent).toContain("97%");
     expect(container.querySelector('[data-muscle="Chest"] title')?.textContent).toBe("Chest 92% readiness");
     expect(container.querySelector('[data-muscle="Quads"]')?.getAttribute("data-readiness-level")).toBe("redline");
     expect(container.querySelector('[data-muscle="Chest"]')?.getAttribute("data-tooltip")).toBe("Chest 92%");
+
+    expect(container.textContent).toContain("Weekly volume");
+    expect(container.textContent).toContain("Volume by week");
+    expect(container.querySelector('[data-chart="weekly-volume-history"]')).not.toBeNull();
+    expect(container.querySelector('[data-series="weekly-volume"]')).not.toBeNull();
+    expect(container.textContent).toContain("4,000 lb/week");
 
     expect(container.textContent).toContain("Strength score over time");
     expect(container.querySelector('[data-chart="strength-score-history"]')).not.toBeNull();

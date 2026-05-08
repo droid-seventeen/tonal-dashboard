@@ -48,6 +48,8 @@ const READINESS_LEVELS: Record<ReadinessLevel, { label: string; color: string; r
   ready: { label: "Ready", color: "#38bdf8", range: "70–84%" },
   prime: { label: "Prime", color: "#10b981", range: "85–100%" }
 };
+const FAMILY_SERIES_COLORS = ["#7170ff", "#10b981", "#f2c879", "#ff6b8a", "#38bdf8", "#c084fc", "#a3e635"];
+const MAX_FAMILY_WEEKLY_POINTS = 12;
 
 export default function DashboardApp() {
   const [payload, setPayload] = useState<ApiPayload | null>(null);
@@ -168,6 +170,7 @@ function LeaderboardView({
   const categoryDefinition = LEADERBOARD_CATEGORIES.find((candidate) => candidate.id === category) ?? LEADERBOARD_CATEGORIES[0];
   const totalFamilyVolume = leaderboard.reduce((sum, member) => sum + member.allTime.totalVolume, 0);
   const totalFamilyWorkouts = leaderboard.reduce((sum, member) => sum + member.allTime.totalWorkouts, 0);
+  const familyWeeklyPeak = Math.max(0, ...leaderboard.flatMap((member) => member.weeklyVolume.map((week) => week.volume)));
 
   return (
     <section className="leaderboard-page">
@@ -247,18 +250,30 @@ function LeaderboardView({
           {!leaderboard.length ? <Empty title="No family members configured yet" text="Add TONAL_MEMBERS_JSON entries to populate the league." /> : null}
         </div>
       </div>
+
+      <section className="panel family-weekly-panel">
+        <div className="panel-heading trend-heading">
+          <div>
+            <h2>Family weekly volume</h2>
+            <p>Everyone&apos;s weekly pounds moved on the same time axis.</p>
+          </div>
+          <span>{familyWeeklyPeak ? `${formatNumber(familyWeeklyPeak)} lb peak week` : "No weekly data"}</span>
+        </div>
+        <FamilyWeeklyVolumeOverlay members={leaderboard} />
+      </section>
     </section>
   );
 }
 
 function MemberDashboard({ data, onBack }: { data: TonalDashboard & { rank: number }; onBack: () => void }) {
-  const maxWeekVolume = Math.max(1, ...data.weeklyVolume.map((week) => week.volume));
   const recentActivities = data.activities.slice(0, 8);
   const recentWorkoutCards = recentActivities.slice(0, 5);
   const strengthTrend = strengthTrendPoints(data);
   const cumulativeVolumeTrend = cumulativeVolumePoints(data.weeklyVolume);
+  const weeklyVolumeTrend = weeklyVolumePoints(data.weeklyVolume);
   const strengthDelta = trendDelta(strengthTrend);
   const cumulativeVolumeTotal = cumulativeVolumeTrend.at(-1)?.value ?? data.allTime.totalVolume;
+  const latestWeeklyVolume = weeklyVolumeTrend.at(-1)?.value ?? 0;
   const detailInsights = useMemo(() => getMemberDetailInsights(data), [data]);
   const detailsByActivity = useMemo(
     () => new Map((data.recentWorkoutDetails ?? []).map((detail) => [detail.activityId, detail])),
@@ -343,34 +358,29 @@ function MemberDashboard({ data, onBack }: { data: TonalDashboard & { rank: numb
         </section>
 
         <section className="panel readiness-panel">
-          <div className="panel-heading"><h2>Muscle readiness</h2><span>Body readiness map</span></div>
+          <div className="panel-heading"><h2>Muscle readiness</h2><span>{Object.keys(data.readiness).length} muscles tracked</span></div>
           <BodyReadinessDiagram readiness={data.readiness} />
         </section>
 
-        <section className="panel weekly-panel">
-          <div className="panel-heading"><h2>Weekly volume</h2><span>Recent</span></div>
-          <div className="weekly-bars">
-            {data.weeklyVolume.slice(-8).map((week) => (
-              <div className="week-row" key={week.week}>
-                <span>{week.week}</span>
-                <div className="bar-track"><div style={{ width: `${Math.max(5, (week.volume / maxWeekVolume) * 100)}%` }} /></div>
-                <strong>{formatNumber(week.volume)}</strong>
-              </div>
-            ))}
-            {!data.weeklyVolume.length ? <Empty text="No recent volume data yet." /> : null}
+        <section className="panel weekly-panel trend-panel">
+          <div className="panel-heading trend-heading">
+            <div>
+              <h2>Weekly volume</h2>
+              <p>Volume by week with pounds on the y-axis and training week on the x-axis.</p>
+            </div>
+            <span>{weeklyVolumeTrend.length ? `${formatNumber(latestWeeklyVolume)} lb/week` : "No weekly data"}</span>
           </div>
-        </section>
-
-        <section className="panel readiness-matrix-panel">
-          <div className="panel-heading"><h2>Readiness matrix</h2><span>{Object.keys(data.readiness).length} muscles</span></div>
-          <div className="readiness-matrix">
-            {Object.entries(data.readiness).sort().map(([muscle, score]) => (
-              <div className="muscle-tile" key={muscle}>
-                <span>{muscle}</span>
-                <strong>{Math.round(score)}%</strong>
-              </div>
-            ))}
-          </div>
+          <TrendLineChart
+            dataChart="weekly-volume-history"
+            dataSeries="weekly-volume"
+            emptyText="No weekly volume data yet."
+            points={weeklyVolumeTrend}
+            stroke="var(--accent)"
+            valueSuffix=" lb"
+            xAxisLabel="Week"
+            yAxisLabel="Volume"
+            zeroBaseline
+          />
         </section>
       </div>
 
@@ -784,6 +794,8 @@ function TrendLineChart({
   emptyText,
   stroke,
   valueSuffix = "",
+  xAxisLabel,
+  yAxisLabel,
   zeroBaseline = false
 }: {
   points: TrendPoint[];
@@ -792,6 +804,8 @@ function TrendLineChart({
   emptyText: string;
   stroke: string;
   valueSuffix?: string;
+  xAxisLabel?: string;
+  yAxisLabel?: string;
   zeroBaseline?: boolean;
 }) {
   const cleanPoints = points.filter((point) => Number.isFinite(point.value));
@@ -841,6 +855,8 @@ function TrendLineChart({
         ))}
         <text className="trend-y-label" x={padding} y={padding - 8}>{formatNumber(max)}</text>
         <text className="trend-y-label" x={padding} y={baseY + 18}>{formatNumber(min)}</text>
+        {yAxisLabel ? <text className="trend-axis-label trend-axis-label-y" transform={`translate(12 ${height / 2}) rotate(-90)`}>{yAxisLabel}</text> : null}
+        {xAxisLabel ? <text className="trend-axis-label trend-axis-label-x" x={width / 2} y={height - 4}>{xAxisLabel}</text> : null}
       </svg>
       <div className="trend-chart-footer">
         <span>{cleanPoints[0].label}</span>
@@ -851,17 +867,93 @@ function TrendLineChart({
   );
 }
 
+function FamilyWeeklyVolumeOverlay({ members }: { members: RankedTonalMember[] }) {
+  const series = members
+    .map((member, index) => ({
+      id: member.member.id,
+      name: member.member.name,
+      color: FAMILY_SERIES_COLORS[index % FAMILY_SERIES_COLORS.length],
+      points: weeklyVolumePoints(member.weeklyVolume)
+    }))
+    .filter((member) => member.points.length);
+
+  if (!series.length) return <Empty text="No weekly volume data yet." />;
+
+  const weeks = Array.from(new Set(series.flatMap((member) => member.points.map((point) => point.label))))
+    .sort((a, b) => a.localeCompare(b))
+    .slice(-MAX_FAMILY_WEEKLY_POINTS);
+  const width = 760;
+  const height = 260;
+  const padding = 34;
+  const max = Math.max(1, ...series.flatMap((member) => member.points.map((point) => point.value)));
+  const baseY = height - padding;
+  const range = Math.max(1, Math.ceil(max * 1.12));
+  const xForWeek = (index: number) => weeks.length === 1 ? width / 2 : padding + (index / (weeks.length - 1)) * (width - padding * 2);
+  const yForValue = (value: number) => padding + ((range - value) / range) * (height - padding * 2);
+  const chartSeries = series.map((member) => {
+    const byWeek = new Map(member.points.map((point) => [point.label, point.value]));
+    const coords = weeks.map((week, index) => ({ label: week, value: byWeek.get(week) ?? 0, x: xForWeek(index), y: yForValue(byWeek.get(week) ?? 0) }));
+    const pathD = coords.map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
+    return { ...member, coords, pathD, latest: coords.at(-1) };
+  });
+
+  return (
+    <div className="family-weekly-chart-wrap">
+      <svg aria-label="Family weekly volume time series" className="family-weekly-chart" data-chart="family-weekly-volume-overlay" role="img" viewBox={`0 0 ${width} ${height}`}>
+        {[0, 1, 2, 3].map((line) => {
+          const y = padding + (line / 3) * (height - padding * 2);
+          return <line className="trend-grid-line" key={line} x1={padding} x2={width - padding} y1={y} y2={y} />;
+        })}
+        {chartSeries.map((member) => (
+          <g className="family-weekly-series" key={member.id} style={{ "--series-color": member.color } as React.CSSProperties}>
+            <title>{member.name} weekly volume</title>
+            <path className="family-weekly-line" d={member.pathD} data-series={`weekly-volume-${member.id}`} fill="none" stroke={member.color} />
+            {member.coords.map((point) => (
+              <circle className="family-weekly-point" cx={point.x} cy={point.y} key={`${member.id}-${point.label}`} r="3.8">
+                <title>{member.name} {point.label}: {formatNumber(point.value)} lb</title>
+              </circle>
+            ))}
+          </g>
+        ))}
+        <text className="trend-y-label" x={padding} y={padding - 10}>{formatNumber(range)}</text>
+        <text className="trend-y-label" x={padding} y={baseY + 18}>0</text>
+        <text className="trend-axis-label trend-axis-label-y" transform={`translate(13 ${height / 2}) rotate(-90)`}>Volume</text>
+        <text className="trend-axis-label trend-axis-label-x" x={width / 2} y={height - 5}>Week</text>
+      </svg>
+      <div className="family-weekly-axis-row">
+        <span>{weeks[0]}</span>
+        <strong>Weekly pounds moved</strong>
+        <span>{weeks.at(-1)}</span>
+      </div>
+      <div className="family-weekly-legend">
+        {chartSeries.map((member) => (
+          <span data-series-legend={`weekly-volume-${member.id}`} key={member.id}>
+            <i style={{ background: member.color }} />
+            {member.name}
+            <strong>{formatNumber(member.latest?.value ?? 0)} lb</strong>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function BodyReadinessDiagram({ readiness }: { readiness: Record<string, number> }) {
   const readyMuscles = Object.entries(readiness)
     .filter(([, value]) => typeof value === "number" && Number.isFinite(value))
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const averageReadiness = readyMuscles.length
+    ? Math.round(readyMuscles.reduce((sum, [, score]) => sum + score, 0) / readyMuscles.length)
+    : 0;
+  const primedCount = readyMuscles.filter(([, score]) => readinessLevel(score) === "prime").length;
+  const redlineCount = readyMuscles.filter(([, score]) => readinessLevel(score) === "redline").length;
 
   if (!readyMuscles.length) return <Empty text="No readiness data returned." />;
 
   return (
     <div className="body-readiness-layout">
       <div className="body-readiness-stage">
-        <svg aria-label="Body readiness heat map" className="body-readiness-diagram" role="img" viewBox="0 0 560 390">
+        <svg aria-label="Body muscle readiness diagram" className="body-readiness-diagram" data-chart="muscle-readiness-body-map" role="img" viewBox="0 0 560 390">
           <defs>
             <filter id="readiness-glow" x="-40%" y="-40%" width="180%" height="180%">
               <feGaussianBlur stdDeviation="4" result="blur" />
@@ -870,7 +962,13 @@ function BodyReadinessDiagram({ readiness }: { readiness: Record<string, number>
                 <feMergeNode in="SourceGraphic" />
               </feMerge>
             </filter>
+            <radialGradient id="readiness-body-aura" cx="50%" cy="45%" r="55%">
+              <stop offset="0%" stopColor="#7170ff" stopOpacity="0.22" />
+              <stop offset="100%" stopColor="#7170ff" stopOpacity="0" />
+            </radialGradient>
           </defs>
+          <ellipse className="body-aura" cx="165" cy="205" rx="116" ry="176" />
+          <ellipse className="body-aura" cx="398" cy="205" rx="116" ry="176" />
           <text className="body-view-label" x="165" y="24">Front</text>
           <text className="body-view-label" x="398" y="24">Back</text>
           <BodyBase side="front" />
@@ -929,13 +1027,26 @@ function BodyReadinessDiagram({ readiness }: { readiness: Record<string, number>
       </div>
 
       <div className="readiness-sidecar">
-        <div className="readiness-legend" aria-label="Readiness color legend">
-          {(Object.keys(READINESS_LEVELS) as ReadinessLevel[]).filter((level) => level !== "unknown").map((level) => (
-            <span key={level}><i style={{ background: READINESS_LEVELS[level].color }} />{READINESS_LEVELS[level].label}<em>{READINESS_LEVELS[level].range}</em></span>
-          ))}
+        <div className="readiness-summary-card">
+          <span>Readiness scores</span>
+          <strong>{averageReadiness}% avg</strong>
+          <em>{formatNumber(primedCount)} primed • {formatNumber(redlineCount)} redline</em>
         </div>
-        <div className="readiness-list compact-readiness-list">
-          {readyMuscles.slice(0, 5).map(([muscle, score]) => <ReadinessRow key={muscle} muscle={muscle} score={score} />)}
+        <div className="readiness-chip-grid" aria-label="Compact muscle readiness scores">
+          {readyMuscles.map(([muscle, score]) => {
+            const level = readinessLevel(score);
+            return (
+              <span
+                data-readiness-chip={muscle}
+                key={muscle}
+                style={{ "--chip-color": READINESS_LEVELS[level].color } as React.CSSProperties}
+              >
+                <i />
+                {muscle}
+                <strong>{Math.round(score)}%</strong>
+              </span>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -982,11 +1093,6 @@ function MuscleZone({
       <text className="readiness-hover-label" x={labelX} y={labelY}>{tooltip}</text>
     </g>
   );
-}
-
-function ReadinessRow({ muscle, score }: { muscle: string; score: number }) {
-  const level = readinessLevel(score);
-  return <div className="readiness-row"><div><span>{muscle}</span><strong>{Math.round(score)}%</strong></div><div className="bar-track"><div style={{ background: READINESS_LEVELS[level].color, width: `${Math.max(3, Math.min(100, score))}%` }} /></div></div>;
 }
 
 function Notice({ children, tone = "info" }: { children: React.ReactNode; tone?: "info" | "error" }) {
@@ -1050,6 +1156,12 @@ function cumulativeVolumePoints(weeks: TonalDashboard["weeklyVolume"]): TrendPoi
       cumulative += Math.max(0, Math.round(week.volume));
       return { label: week.week, value: cumulative };
     });
+}
+
+function weeklyVolumePoints(weeks: TonalDashboard["weeklyVolume"]): TrendPoint[] {
+  return [...weeks]
+    .sort((a, b) => a.week.localeCompare(b.week))
+    .map((week) => ({ label: week.week, value: Math.max(0, Math.round(week.volume)) }));
 }
 
 function trendDelta(points: TrendPoint[]): number | undefined {
