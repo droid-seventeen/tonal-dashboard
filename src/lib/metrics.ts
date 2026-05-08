@@ -43,6 +43,134 @@ export type WorkoutActivityInput = {
   activeDuration?: number | null;
 };
 
+export type TrainingCalendarInput = {
+  activityTime?: string | null;
+  beginTime?: string | null;
+  totalVolume?: number | null;
+  totalReps?: number | null;
+  totalDuration?: number | null;
+  activeDuration?: number | null;
+  workoutPreview?: {
+    totalVolume?: number | null;
+    totalReps?: number | null;
+    totalDuration?: number | null;
+  } | null;
+};
+
+export type TrainingCalendarDay = {
+  date: string;
+  workouts: number;
+  volume: number;
+  reps: number;
+  duration: number;
+  intensity: number;
+};
+
+export type DetailActivityInput = TrainingCalendarInput & {
+  activityId?: string | null;
+  activityType?: string | null;
+  workoutPreview?: TrainingCalendarInput["workoutPreview"] & {
+    workoutTitle?: string | null;
+    targetArea?: string | null;
+  };
+};
+
+export type DetailSetInput = {
+  repCount?: number | null;
+  weight?: number | null;
+  avgMaxWeight?: number | null;
+  oneRepMax?: number | null;
+  maxConPower?: number | null;
+  totalVolume?: number | null;
+  duration?: number | null;
+};
+
+export type DetailMovementInput = {
+  movementName?: string | null;
+  totalVolume?: number | null;
+  totalWork?: number | null;
+  sets?: DetailSetInput[] | null;
+};
+
+export type DetailWorkoutInput = {
+  activityId?: string | null;
+  name?: string | null;
+  targetArea?: string | null;
+  duration?: number | null;
+  timeUnderTension?: number | null;
+  totalReps?: number | null;
+  totalSets?: number | null;
+  totalVolume?: number | null;
+  totalWork?: number | null;
+  movementSets?: DetailMovementInput[] | null;
+};
+
+export type PersonalRecordInsight = {
+  label: string;
+  value: number;
+  unit: string;
+  movementName?: string;
+  workoutName?: string;
+  date?: string;
+};
+
+export type FavoriteMovementInsight = {
+  name: string;
+  volume: number;
+  sets: number;
+  reps: number;
+  frequency: number;
+};
+
+export type BodyBalanceArea = "Upper" | "Lower" | "Core" | "Full Body" | "Other";
+
+export type BodyBalanceInsight = {
+  area: BodyBalanceArea;
+  workouts: number;
+  volume: number;
+  percentage: number;
+};
+
+export type TrainingStyleInsight = {
+  label: string;
+  traits: string[];
+};
+
+export type RecentWorkoutHighlight = {
+  title: string;
+  date?: string;
+  volume?: number;
+  reps?: number;
+  duration?: number;
+  density?: number;
+};
+
+export type MemberDetailInsights = {
+  calendar: {
+    days: TrainingCalendarDay[];
+    activeDays: number;
+    activeStreak: number;
+    longestStreak: number;
+    maxVolume: number;
+    totalVolume: number;
+  };
+  records: {
+    heaviestSet?: PersonalRecordInsight;
+    bestOneRepMax?: PersonalRecordInsight;
+    mostRepsWorkout?: PersonalRecordInsight;
+    highestVolumeWorkout?: PersonalRecordInsight;
+    peakPower?: PersonalRecordInsight;
+  };
+  favoriteMovements: FavoriteMovementInsight[];
+  bodyBalance: BodyBalanceInsight[];
+  trainingStyle: TrainingStyleInsight;
+  recentHighlights: {
+    bestVolumeWorkout?: RecentWorkoutHighlight;
+    densityWorkout?: RecentWorkoutHighlight;
+    standoutRecord?: PersonalRecordInsight;
+  };
+};
+
 export type AllTimeStats = {
   totalVolume: number;
   totalWorkouts: number;
@@ -111,6 +239,10 @@ export type DashboardMetricMember = {
   strengthHistory?: StrengthHistoryPoint[];
   allTime: AllTimeStats;
   weeklyVolume: WeeklyVolume[];
+  calendarDays?: TrainingCalendarDay[];
+  activities?: DetailActivityInput[];
+  recentWorkoutDetails?: DetailWorkoutInput[];
+  errors?: string[];
 };
 
 export type PersonalTrendBadge = {
@@ -203,6 +335,42 @@ export function summarizeAllTimeStats(workouts: WorkoutActivityInput[]): AllTime
   };
 }
 
+export function summarizeCalendarDays(entries: TrainingCalendarInput[]): TrainingCalendarDay[] {
+  const byDate = new Map<string, Omit<TrainingCalendarDay, "intensity">>();
+
+  for (const entry of entries) {
+    const date = dateKey(entry.beginTime ?? entry.activityTime);
+    if (!date) continue;
+
+    const existing = byDate.get(date) ?? { date, workouts: 0, volume: 0, reps: 0, duration: 0 };
+    existing.workouts += 1;
+    existing.volume += metricNumber(entry.totalVolume ?? entry.workoutPreview?.totalVolume);
+    existing.reps += metricNumber(entry.totalReps ?? entry.workoutPreview?.totalReps);
+    existing.duration += metricNumber(entry.totalDuration ?? entry.activeDuration ?? entry.workoutPreview?.totalDuration);
+    byDate.set(date, existing);
+  }
+
+  return finalizeCalendarDays([...byDate.values()]);
+}
+
+export function getMemberDetailInsights(member: DashboardMetricMember): MemberDetailInsights {
+  const days = normalizeCalendarDays(member.calendarDays?.length ? member.calendarDays : summarizeCalendarDays(member.activities ?? []));
+  const calendar = summarizeTrainingCalendar(days);
+  const workouts = collectWorkoutSummaries(member.activities ?? [], member.recentWorkoutDetails ?? []);
+  const records = derivePersonalRecords(workouts);
+  const favoriteMovements = deriveFavoriteMovements(member.recentWorkoutDetails ?? []);
+  const bodyBalance = deriveBodyBalance(workouts);
+
+  return {
+    calendar,
+    records,
+    favoriteMovements,
+    bodyBalance,
+    trainingStyle: deriveTrainingStyle(member, calendar, bodyBalance),
+    recentHighlights: deriveRecentHighlights(workouts, records)
+  };
+}
+
 export function rankMembersByAllTimeVolume<T extends { member: { id: string; name: string }; allTime: { totalVolume: number } }>(
   members: T[]
 ): LeaderboardEntry<T>[] {
@@ -276,6 +444,379 @@ export function latestDashboardTimestamp<T extends { fetchedAt?: string }>(membe
     if (!latest || date.getTime() > latest.getTime()) latest = date;
   }
   return latest;
+}
+
+type WorkoutInsightSource = {
+  key: string;
+  title: string;
+  date?: string;
+  targetArea?: string;
+  volume?: number;
+  reps?: number;
+  duration?: number;
+  tension?: number;
+  detail?: DetailWorkoutInput;
+};
+
+type MutableFavoriteMovement = Omit<FavoriteMovementInsight, "frequency"> & {
+  workouts: Set<string>;
+};
+
+const BODY_BALANCE_ORDER: BodyBalanceArea[] = ["Upper", "Lower", "Core", "Full Body", "Other"];
+
+function normalizeCalendarDays(days: TrainingCalendarDay[]): TrainingCalendarDay[] {
+  const byDate = new Map<string, Omit<TrainingCalendarDay, "intensity">>();
+
+  for (const day of days) {
+    if (!isDateKey(day.date)) continue;
+    const existing = byDate.get(day.date) ?? { date: day.date, workouts: 0, volume: 0, reps: 0, duration: 0 };
+    existing.workouts += metricNumber(day.workouts);
+    existing.volume += metricNumber(day.volume);
+    existing.reps += metricNumber(day.reps);
+    existing.duration += metricNumber(day.duration);
+    byDate.set(day.date, existing);
+  }
+
+  return finalizeCalendarDays([...byDate.values()]);
+}
+
+function finalizeCalendarDays(days: Omit<TrainingCalendarDay, "intensity">[]): TrainingCalendarDay[] {
+  const maxVolume = Math.max(0, ...days.map((day) => day.volume));
+  return days
+    .map((day) => ({
+      ...day,
+      workouts: Math.max(0, Math.round(day.workouts)),
+      volume: Math.max(0, Math.round(day.volume)),
+      reps: Math.max(0, Math.round(day.reps)),
+      duration: Math.max(0, Math.round(day.duration)),
+      intensity: calendarIntensity(day.workouts, day.volume, maxVolume)
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function summarizeTrainingCalendar(days: TrainingCalendarDay[]): MemberDetailInsights["calendar"] {
+  const activeDays = days.filter((day) => day.workouts > 0).length;
+  const maxVolume = Math.max(0, ...days.map((day) => day.volume));
+  const totalVolume = days.reduce((sum, day) => sum + day.volume, 0);
+  let longestStreak = 0;
+  let currentChain = 0;
+  let previousDate: string | undefined;
+
+  for (const day of days.filter((entry) => entry.workouts > 0)) {
+    currentChain = previousDate && daysBetween(previousDate, day.date) === 1 ? currentChain + 1 : 1;
+    longestStreak = Math.max(longestStreak, currentChain);
+    previousDate = day.date;
+  }
+
+  return {
+    days,
+    activeDays,
+    activeStreak: currentChain,
+    longestStreak,
+    maxVolume,
+    totalVolume
+  };
+}
+
+function collectWorkoutSummaries(
+  activities: DetailActivityInput[],
+  details: DetailWorkoutInput[]
+): WorkoutInsightSource[] {
+  const workouts = new Map<string, WorkoutInsightSource>();
+
+  activities.forEach((activity, index) => {
+    const key = activity.activityId ?? activity.activityTime ?? `activity-${index}`;
+    const preview = activity.workoutPreview;
+    workouts.set(key, {
+      key,
+      title: preview?.workoutTitle ?? activity.activityType ?? "Workout",
+      date: activity.activityTime ?? undefined,
+      targetArea: preview?.targetArea ?? activity.activityType ?? undefined,
+      volume: finiteNumber(activity.totalVolume ?? preview?.totalVolume),
+      reps: finiteNumber(activity.totalReps ?? preview?.totalReps),
+      duration: finiteNumber(activity.totalDuration ?? activity.activeDuration ?? preview?.totalDuration)
+    });
+  });
+
+  details.forEach((detail, index) => {
+    const key = detail.activityId ?? detail.name ?? `detail-${index}`;
+    const existing = workouts.get(key);
+    workouts.set(key, {
+      key,
+      title: detail.name ?? existing?.title ?? "Workout",
+      date: existing?.date,
+      targetArea: detail.targetArea ?? existing?.targetArea,
+      volume: finiteNumber(detail.totalVolume) ?? existing?.volume,
+      reps: finiteNumber(detail.totalReps) ?? existing?.reps,
+      duration: finiteNumber(detail.duration) ?? existing?.duration,
+      tension: finiteNumber(detail.timeUnderTension) ?? existing?.tension,
+      detail
+    });
+  });
+
+  return [...workouts.values()].sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime());
+}
+
+function derivePersonalRecords(workouts: WorkoutInsightSource[]): MemberDetailInsights["records"] {
+  const records: MemberDetailInsights["records"] = {};
+
+  for (const workout of workouts) {
+    if (workout.reps && workout.reps > 0) {
+      records.mostRepsWorkout = betterRecord(records.mostRepsWorkout, {
+        label: "Most reps in one workout",
+        value: workout.reps,
+        unit: "reps",
+        workoutName: workout.title,
+        date: workout.date
+      });
+    }
+
+    if (workout.volume && workout.volume > 0) {
+      records.highestVolumeWorkout = betterRecord(records.highestVolumeWorkout, {
+        label: "Highest volume workout",
+        value: workout.volume,
+        unit: "lb",
+        workoutName: workout.title,
+        date: workout.date
+      });
+    }
+
+    for (const movement of workout.detail?.movementSets ?? []) {
+      const movementName = cleanLabel(movement.movementName) ?? "Movement";
+      for (const set of movement.sets ?? []) {
+        const weight = finiteNumber(set.weight ?? set.avgMaxWeight);
+        if (weight && weight > 0) {
+          records.heaviestSet = betterRecord(records.heaviestSet, {
+            label: "Heaviest set",
+            value: weight,
+            unit: "lb",
+            movementName,
+            workoutName: workout.title,
+            date: workout.date
+          });
+        }
+
+        const oneRepMax = finiteNumber(set.oneRepMax);
+        if (oneRepMax && oneRepMax > 0) {
+          records.bestOneRepMax = betterRecord(records.bestOneRepMax, {
+            label: "Best estimated 1RM",
+            value: oneRepMax,
+            unit: "lb",
+            movementName,
+            workoutName: workout.title,
+            date: workout.date
+          });
+        }
+
+        const power = finiteNumber(set.maxConPower);
+        if (power && power > 0) {
+          records.peakPower = betterRecord(records.peakPower, {
+            label: "Peak power",
+            value: power,
+            unit: "W",
+            movementName,
+            workoutName: workout.title,
+            date: workout.date
+          });
+        }
+      }
+    }
+  }
+
+  return records;
+}
+
+function deriveFavoriteMovements(details: DetailWorkoutInput[]): FavoriteMovementInsight[] {
+  const byName = new Map<string, MutableFavoriteMovement>();
+
+  details.forEach((detail, detailIndex) => {
+    const workoutKey = detail.activityId ?? detail.name ?? `detail-${detailIndex}`;
+    for (const movement of detail.movementSets ?? []) {
+      const name = cleanLabel(movement.movementName);
+      if (!name) continue;
+      const existing = byName.get(name) ?? { name, volume: 0, sets: 0, reps: 0, workouts: new Set<string>() };
+      const sets = movement.sets ?? [];
+      existing.volume += finiteNumber(movement.totalVolume) ?? sets.reduce((sum, set) => sum + metricNumber(set.totalVolume), 0);
+      existing.sets += sets.length;
+      existing.reps += sets.reduce((sum, set) => sum + metricNumber(set.repCount), 0);
+      existing.workouts.add(workoutKey);
+      byName.set(name, existing);
+    }
+  });
+
+  return [...byName.values()]
+    .map((movement) => ({
+      name: movement.name,
+      volume: Math.round(movement.volume),
+      sets: movement.sets,
+      reps: movement.reps,
+      frequency: movement.workouts.size
+    }))
+    .sort((a, b) => b.volume - a.volume || b.frequency - a.frequency || b.reps - a.reps || a.name.localeCompare(b.name))
+    .slice(0, 6);
+}
+
+function deriveBodyBalance(workouts: WorkoutInsightSource[]): BodyBalanceInsight[] {
+  const byArea = new Map<BodyBalanceArea, { workouts: number; volume: number }>(
+    BODY_BALANCE_ORDER.map((area) => [area, { workouts: 0, volume: 0 }])
+  );
+
+  for (const workout of workouts) {
+    const area = classifyBodyArea(workout.targetArea ?? workout.title);
+    const existing = byArea.get(area) ?? { workouts: 0, volume: 0 };
+    existing.workouts += 1;
+    existing.volume += metricNumber(workout.volume);
+    byArea.set(area, existing);
+  }
+
+  const totalVolume = [...byArea.values()].reduce((sum, entry) => sum + entry.volume, 0);
+  const totalWorkouts = [...byArea.values()].reduce((sum, entry) => sum + entry.workouts, 0);
+
+  return BODY_BALANCE_ORDER.map((area) => {
+    const entry = byArea.get(area) ?? { workouts: 0, volume: 0 };
+    return {
+      area,
+      workouts: entry.workouts,
+      volume: Math.round(entry.volume),
+      percentage: totalVolume > 0
+        ? Math.round((entry.volume / totalVolume) * 100)
+        : totalWorkouts > 0
+          ? Math.round((entry.workouts / totalWorkouts) * 100)
+          : 0
+    };
+  });
+}
+
+function deriveTrainingStyle(
+  member: DashboardMetricMember,
+  calendar: MemberDetailInsights["calendar"],
+  bodyBalance: BodyBalanceInsight[]
+): TrainingStyleInsight {
+  const strengthDelta = overallStrengthDelta(member);
+  const averageVolume = member.allTime.totalWorkouts > 0 ? Math.round(member.allTime.totalVolume / member.allTime.totalWorkouts) : 0;
+  const recentAverageVolume = calendar.activeDays > 0 ? Math.round(calendar.totalVolume / calendar.activeDays) : 0;
+  const topArea = [...bodyBalance].sort((a, b) => b.percentage - a.percentage || b.volume - a.volume)[0];
+  const weekendShare = activeWeekendShare(calendar.days);
+  const traits = [
+    strengthDelta === undefined ? undefined : `${signedNumber(strengthDelta)} strength score`,
+    calendar.activeStreak > 0 ? `${calendar.activeStreak}-day active streak` : undefined,
+    topArea && topArea.percentage > 0 ? `${topArea.area} focus (${topArea.percentage}%)` : undefined,
+    averageVolume > 0 ? `${formatNumber(averageVolume)} lb/workout avg` : undefined
+  ].filter((trait): trait is string => Boolean(trait));
+
+  let label = "Balanced builder";
+  if (topArea?.area === "Core" && topArea.percentage >= 45) label = "Core specialist";
+  else if (strengthDelta !== undefined && strengthDelta >= 20) label = "Strength-score climber";
+  else if (calendar.activeStreak >= 5 || calendar.activeDays >= 10) label = "Consistency monster";
+  else if (averageVolume >= 5000 || recentAverageVolume >= 5000) label = "High-volume grinder";
+  else if (weekendShare >= 0.6 && calendar.activeDays >= 3) label = "Weekend warrior";
+
+  return { label, traits: traits.length ? traits : ["More workout detail will sharpen this profile."] };
+}
+
+function deriveRecentHighlights(
+  workouts: WorkoutInsightSource[],
+  records: MemberDetailInsights["records"]
+): MemberDetailInsights["recentHighlights"] {
+  const bestVolumeWorkout = [...workouts]
+    .filter((workout) => (workout.volume ?? 0) > 0)
+    .sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))[0];
+  const densityWorkout = workouts
+    .map((workout) => ({ workout, density: workoutDensity(workout) }))
+    .filter((entry): entry is { workout: WorkoutInsightSource; density: number } => typeof entry.density === "number")
+    .sort((a, b) => b.density - a.density)[0];
+
+  return {
+    bestVolumeWorkout: bestVolumeWorkout ? workoutHighlight(bestVolumeWorkout) : undefined,
+    densityWorkout: densityWorkout ? workoutHighlight(densityWorkout.workout, densityWorkout.density) : undefined,
+    standoutRecord: records.peakPower ?? records.bestOneRepMax ?? records.heaviestSet ?? records.highestVolumeWorkout
+  };
+}
+
+function betterRecord(current: PersonalRecordInsight | undefined, candidate: PersonalRecordInsight): PersonalRecordInsight {
+  return !current || candidate.value > current.value ? candidate : current;
+}
+
+function workoutDensity(workout: WorkoutInsightSource): number | undefined {
+  const volume = workout.volume ?? 0;
+  const seconds = workout.tension && workout.tension > 0 ? workout.tension : workout.duration;
+  if (!volume || !seconds || seconds <= 0) return undefined;
+  return Math.round(volume / (seconds / 60));
+}
+
+function workoutHighlight(workout: WorkoutInsightSource, density = workoutDensity(workout)): RecentWorkoutHighlight {
+  return {
+    title: workout.title,
+    date: workout.date,
+    volume: workout.volume,
+    reps: workout.reps,
+    duration: workout.duration,
+    density
+  };
+}
+
+function classifyBodyArea(value?: string | null): BodyBalanceArea {
+  const label = (value ?? "").toLowerCase();
+  if (label.includes("full") || label.includes("total body")) return "Full Body";
+  if (label.includes("core") || label.includes("ab") || label.includes("oblique")) return "Core";
+  if (label.includes("lower") || label.includes("leg") || label.includes("glute") || label.includes("quad") || label.includes("hamstring") || label.includes("calf")) return "Lower";
+  if (label.includes("upper") || label.includes("chest") || label.includes("back") || label.includes("shoulder") || label.includes("arm") || label.includes("bicep") || label.includes("tricep")) return "Upper";
+  return "Other";
+}
+
+function activeWeekendShare(days: TrainingCalendarDay[]): number {
+  const activeDays = days.filter((day) => day.workouts > 0);
+  if (!activeDays.length) return 0;
+  const weekendDays = activeDays.filter((day) => {
+    const date = parseDateKey(day.date);
+    const weekday = date?.getUTCDay();
+    return weekday === 0 || weekday === 6;
+  }).length;
+  return weekendDays / activeDays.length;
+}
+
+function calendarIntensity(workouts: number, volume: number, maxVolume: number): number {
+  if (workouts <= 0) return 0;
+  if (maxVolume <= 0 || volume <= 0) return 1;
+  const ratio = volume / maxVolume;
+  if (ratio > 0.75) return 4;
+  if (ratio > 0.5) return 3;
+  if (ratio > 0.25) return 2;
+  return 1;
+}
+
+function dateKey(value?: string | null): string | undefined {
+  if (!value) return undefined;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return date.toISOString().slice(0, 10);
+}
+
+function isDateKey(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && Boolean(parseDateKey(value));
+}
+
+function parseDateKey(value: string): Date | undefined {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return undefined;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function daysBetween(start: string, end: string): number | undefined {
+  const startDate = parseDateKey(start);
+  const endDate = parseDateKey(end);
+  if (!startDate || !endDate) return undefined;
+  return Math.round((endDate.getTime() - startDate.getTime()) / 86400000);
+}
+
+function metricNumber(value?: number | null): number {
+  return typeof value === "number" && Number.isFinite(value) ? Math.round(value) : 0;
+}
+
+function cleanLabel(value?: string | null): string | undefined {
+  const label = value?.trim();
+  return label || undefined;
 }
 
 type RankedValue<T extends DashboardMetricMember> = {

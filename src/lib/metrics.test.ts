@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getMemberDetailInsights,
   getPersonalTrendBadges,
   groupActivitiesByWeek,
   latestDashboardTimestamp,
@@ -7,6 +8,7 @@ import {
   normalizeStrengthScores,
   rankMembersByAllTimeVolume,
   rankMembersForCategory,
+  summarizeCalendarDays,
   summarizeAllTimeStats,
   topReadyMuscles
 } from "./metrics";
@@ -70,6 +72,120 @@ describe("dashboard metrics", () => {
       firstWorkoutAt: "2026-01-01T10:00:00Z",
       lastWorkoutAt: "2026-02-01T10:00:00Z"
     });
+  });
+
+  it("normalizes daily training calendar volume with intensity levels", () => {
+    expect(
+      summarizeCalendarDays([
+        { beginTime: "2026-05-01T10:00:00Z", totalVolume: 1000, totalReps: 20, totalDuration: 1200 },
+        { beginTime: "2026-05-01T18:00:00Z", totalVolume: 2000, totalReps: 50, activeDuration: 900 },
+        { beginTime: "2026-05-03T10:00:00Z", totalVolume: 500, totalReps: 30, totalDuration: 600 }
+      ])
+    ).toEqual([
+      { date: "2026-05-01", workouts: 2, volume: 3000, reps: 70, duration: 2100, intensity: 4 },
+      { date: "2026-05-03", workouts: 1, volume: 500, reps: 30, duration: 600, intensity: 1 }
+    ]);
+  });
+
+  it("derives member-detail records, movement favorites, balance, style, and best recent sessions", () => {
+    const insights = getMemberDetailInsights({
+      member: { id: "taylor", name: "Taylor" },
+      fetchedAt: "2026-05-04T12:00:00Z",
+      strength: { overall: 535 },
+      strengthHistory: [
+        { activityTime: "2026-04-01T12:00:00Z", overall: 500 },
+        { activityTime: "2026-05-01T12:00:00Z", overall: 535 }
+      ],
+      allTime: { totalVolume: 14800, totalWorkouts: 3, totalReps: 262, totalDuration: 6300 },
+      weeklyVolume: [{ week: "2026-W18", workouts: 3, volume: 14800 }],
+      calendarDays: [
+        { date: "2026-05-01", workouts: 1, volume: 6200, reps: 82, duration: 1800, intensity: 4 },
+        { date: "2026-05-02", workouts: 1, volume: 3200, reps: 120, duration: 2400, intensity: 2 },
+        { date: "2026-05-03", workouts: 1, volume: 5400, reps: 60, duration: 2100, intensity: 3 }
+      ],
+      activities: [
+        {
+          activityId: "upper-density",
+          activityTime: "2026-05-01T10:00:00Z",
+          workoutPreview: { workoutTitle: "Upper Density", targetArea: "Upper Body", totalDuration: 1800, totalVolume: 6200 }
+        },
+        {
+          activityId: "core-builder",
+          activityTime: "2026-05-02T10:00:00Z",
+          workoutPreview: { workoutTitle: "Core Builder", targetArea: "Core", totalDuration: 2400, totalVolume: 3200 }
+        },
+        {
+          activityId: "lower-strength",
+          activityTime: "2026-05-03T10:00:00Z",
+          workoutPreview: { workoutTitle: "Lower Strength", targetArea: "Lower Body", totalDuration: 2100, totalVolume: 5400 }
+        }
+      ],
+      recentWorkoutDetails: [
+        {
+          activityId: "upper-density",
+          name: "Upper Density",
+          targetArea: "Upper Body",
+          duration: 1800,
+          timeUnderTension: 600,
+          totalReps: 82,
+          totalSets: 8,
+          totalVolume: 6200,
+          movementSets: [
+            {
+              movementName: "Wide Grip Bench Press",
+              totalVolume: 4000,
+              sets: [
+                { repCount: 5, weight: 80, oneRepMax: 95, maxConPower: 450, totalVolume: 400 },
+                { repCount: 6, weight: 75, oneRepMax: 90, totalVolume: 450 }
+              ]
+            },
+            { movementName: "Bent Over Row", totalVolume: 2200, sets: [{ repCount: 8, weight: 65, totalVolume: 520 }] }
+          ]
+        },
+        {
+          activityId: "core-builder",
+          name: "Core Builder",
+          targetArea: "Core",
+          duration: 2400,
+          timeUnderTension: 500,
+          totalReps: 120,
+          totalSets: 10,
+          totalVolume: 3200,
+          movementSets: [
+            { movementName: "Pallof Press", totalVolume: 1800, sets: [{ repCount: 14, weight: 30, totalVolume: 420 }] },
+            { movementName: "Dead Bug", totalVolume: 1400, sets: [{ repCount: 18, weight: 0, totalVolume: 0 }] }
+          ]
+        },
+        {
+          activityId: "lower-strength",
+          name: "Lower Strength",
+          targetArea: "Lower Body",
+          duration: 2100,
+          timeUnderTension: 900,
+          totalReps: 60,
+          totalSets: 6,
+          totalVolume: 5400,
+          movementSets: [
+            { movementName: "Barbell Squat", totalVolume: 5400, sets: [{ repCount: 5, weight: 100, oneRepMax: 120, maxConPower: 390, totalVolume: 500 }] }
+          ]
+        }
+      ],
+      errors: []
+    });
+
+    expect(insights.calendar.activeDays).toBe(3);
+    expect(insights.calendar.activeStreak).toBe(3);
+    expect(insights.records.heaviestSet).toMatchObject({ label: "Heaviest set", value: 100, unit: "lb", movementName: "Barbell Squat" });
+    expect(insights.records.bestOneRepMax).toMatchObject({ label: "Best estimated 1RM", value: 120, unit: "lb", movementName: "Barbell Squat" });
+    expect(insights.records.mostRepsWorkout).toMatchObject({ label: "Most reps in one workout", value: 120, unit: "reps", workoutName: "Core Builder" });
+    expect(insights.records.highestVolumeWorkout).toMatchObject({ label: "Highest volume workout", value: 6200, unit: "lb", workoutName: "Upper Density" });
+    expect(insights.records.peakPower).toMatchObject({ label: "Peak power", value: 450, unit: "W", movementName: "Wide Grip Bench Press" });
+    expect(insights.favoriteMovements[0]).toMatchObject({ name: "Barbell Squat", volume: 5400, frequency: 1, reps: 5 });
+    expect(insights.bodyBalance.find((segment) => segment.area === "Upper")).toMatchObject({ workouts: 1, volume: 6200, percentage: 42 });
+    expect(insights.trainingStyle.label).toBe("Strength-score climber");
+    expect(insights.trainingStyle.traits).toContain("+35 strength score");
+    expect(insights.recentHighlights.bestVolumeWorkout).toMatchObject({ title: "Upper Density", volume: 6200 });
+    expect(insights.recentHighlights.densityWorkout).toMatchObject({ title: "Upper Density", density: 620 });
   });
 
   it("ranks family members by all-time volume", () => {

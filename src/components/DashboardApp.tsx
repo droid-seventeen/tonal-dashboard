@@ -14,9 +14,11 @@ import { useEffect, useMemo, useState } from "react";
 import {
   formatDuration,
   formatNumber,
+  getMemberDetailInsights,
   LEADERBOARD_CATEGORIES,
   latestDashboardTimestamp,
   rankMembersForCategory,
+  type MemberDetailInsights,
   type LeaderboardCategoryId,
   type RankedCategoryEntry
 } from "@/lib/metrics";
@@ -257,6 +259,7 @@ function MemberDashboard({ data, onBack }: { data: TonalDashboard & { rank: numb
   const cumulativeVolumeTrend = cumulativeVolumePoints(data.weeklyVolume);
   const strengthDelta = trendDelta(strengthTrend);
   const cumulativeVolumeTotal = cumulativeVolumeTrend.at(-1)?.value ?? data.allTime.totalVolume;
+  const detailInsights = useMemo(() => getMemberDetailInsights(data), [data]);
   const detailsByActivity = useMemo(
     () => new Map((data.recentWorkoutDetails ?? []).map((detail) => [detail.activityId, detail])),
     [data.recentWorkoutDetails]
@@ -287,6 +290,8 @@ function MemberDashboard({ data, onBack }: { data: TonalDashboard & { rank: numb
         <MetricCard icon={<Zap size={17} />} label="Total reps" value={formatNumber(data.allTime.totalReps)} />
         <MetricCard icon={<CalendarDays size={17} />} label="Time trained" value={formatDuration(data.allTime.totalDuration)} />
       </div>
+
+      <MemberInsightPanels data={data} insights={detailInsights} />
 
       <div className="trend-grid">
         <section className="panel trend-panel">
@@ -400,6 +405,213 @@ function MetricCard({ icon, label, value, suffix }: { icon: React.ReactNode; lab
   return <div className="metric-card"><span className="metric-icon">{icon}</span><span>{label}</span><strong>{value}{suffix ? <em> {suffix}</em> : null}</strong></div>;
 }
 
+function MemberInsightPanels({ data, insights }: { data: TonalDashboard; insights: MemberDetailInsights }) {
+  return (
+    <div className="member-insight-grid">
+      <TrainingCalendarPanel insights={insights} memberName={data.member.name} />
+      <TrainingStylePanel insights={insights} />
+      <PersonalRecordsPanel insights={insights} />
+      <BestRecentWorkoutPanel insights={insights} />
+      <FavoriteMovementsPanel insights={insights} />
+      <BodyBalancePanel insights={insights} />
+    </div>
+  );
+}
+
+function TrainingCalendarPanel({ insights, memberName }: { insights: MemberDetailInsights; memberName: string }) {
+  const cells = calendarHeatmapCells(insights.calendar.days);
+
+  return (
+    <section className="panel training-calendar-panel" data-section="training-calendar">
+      <div className="panel-heading">
+        <div>
+          <h2>Training calendar</h2>
+          <p>Workout days shaded by daily volume from normalized Tonal history.</p>
+        </div>
+        <span>Recent days</span>
+      </div>
+      <div className="calendar-summary-row">
+        <CalendarSummaryStat label="Logged" value={`${formatNumber(insights.calendar.activeDays)} active days`} />
+        <CalendarSummaryStat label="Active streak" value={dayStreakLabel(insights.calendar.activeStreak)} />
+        <CalendarSummaryStat label="Best streak" value={dayStreakLabel(insights.calendar.longestStreak)} />
+      </div>
+      <div
+        aria-label={`${memberName} training calendar heatmap`}
+        className="calendar-heatmap"
+        data-chart="training-calendar-heatmap"
+        role="img"
+      >
+        {cells.map((cell) => (
+          <span
+            aria-label={cell.workouts ? `${cell.date}: ${formatNumber(cell.volume)} lb` : `${cell.date}: no workout`}
+            className="calendar-cell"
+            data-intensity={cell.intensity}
+            key={cell.date}
+            title={cell.workouts ? `${cell.date}: ${formatNumber(cell.volume)} lb, ${formatNumber(cell.workouts)} workout${cell.workouts === 1 ? "" : "s"}` : `${cell.date}: no workout`}
+          />
+        ))}
+      </div>
+      <div className="calendar-legend" aria-label="Training calendar intensity legend">
+        <span>Less</span>
+        {[0, 1, 2, 3, 4].map((level) => <i data-intensity={level} key={level} />)}
+        <span>More</span>
+      </div>
+    </section>
+  );
+}
+
+function CalendarSummaryStat({ label, value }: { label: string; value: string }) {
+  return <div className="calendar-summary-stat"><span>{label}</span><strong>{value}</strong></div>;
+}
+
+function PersonalRecordsPanel({ insights }: { insights: MemberDetailInsights }) {
+  const recordSlots: Array<{ key: keyof MemberDetailInsights["records"]; label: string }> = [
+    { key: "heaviestSet", label: "Heaviest set" },
+    { key: "bestOneRepMax", label: "Best estimated 1RM" },
+    { key: "mostRepsWorkout", label: "Most reps in one workout" },
+    { key: "highestVolumeWorkout", label: "Highest volume workout" },
+    { key: "peakPower", label: "Peak power" }
+  ];
+
+  return (
+    <section className="panel personal-records-panel" data-section="personal-records">
+      <div className="panel-heading"><h2>Personal records</h2><span>Recent detail</span></div>
+      <div className="record-grid">
+        {recordSlots.map((slot) => <RecordCard key={slot.key} label={slot.label} record={insights.records[slot.key]} />)}
+      </div>
+    </section>
+  );
+}
+
+function RecordCard({ label, record }: { label: string; record?: NonNullable<MemberDetailInsights["records"][keyof MemberDetailInsights["records"]]> }) {
+  return (
+    <article className={record ? "record-card" : "record-card record-card-empty"}>
+      <span>{record?.label ?? label}</span>
+      <strong>{record ? `${formatNumber(record.value)} ${record.unit}` : "—"}</strong>
+      <em>{record ? recordContext(record) : "Waiting for formatted workout details."}</em>
+    </article>
+  );
+}
+
+function FavoriteMovementsPanel({ insights }: { insights: MemberDetailInsights }) {
+  const maxVolume = Math.max(1, ...insights.favoriteMovements.map((movement) => movement.volume));
+
+  return (
+    <section className="panel favorite-movements-panel" data-section="favorite-movements">
+      <div className="panel-heading">
+        <div>
+          <h2>Favorite movements</h2>
+          <p>Top movement names by recent formatted volume and frequency.</p>
+        </div>
+        <span>Top {insights.favoriteMovements.length}</span>
+      </div>
+      <div className="insight-bar-list">
+        {insights.favoriteMovements.map((movement) => (
+          <div className="insight-bar-row" data-movement={movement.name} key={movement.name}>
+            <div>
+              <span>{movement.name}</span>
+              <em>{formatNumber(movement.frequency)} workout{movement.frequency === 1 ? "" : "s"} • {formatNumber(movement.sets)} sets • {formatNumber(movement.reps)} reps</em>
+            </div>
+            <strong>{formatNumber(movement.volume)} lb</strong>
+            <div className="bar-track"><div style={{ width: `${Math.max(6, (movement.volume / maxVolume) * 100)}%` }} /></div>
+          </div>
+        ))}
+        {!insights.favoriteMovements.length ? <Empty text="Detailed movement sets are needed to rank favorites." /> : null}
+      </div>
+    </section>
+  );
+}
+
+function BodyBalancePanel({ insights }: { insights: MemberDetailInsights }) {
+  return (
+    <section className="panel body-balance-panel" data-section="body-balance-analysis">
+      <div className="panel-heading">
+        <div>
+          <h2>Body balance</h2>
+          <p>Workout distribution by target area from activities and formatted details.</p>
+        </div>
+        <span>Training mix</span>
+      </div>
+      <div className="body-balance-stack">
+        {insights.bodyBalance.map((segment) => (
+          <div className="body-balance-row" data-balance-area={segment.area} key={segment.area}>
+            <div>
+              <span>{segment.area}</span>
+              <em>{formatNumber(segment.workouts)} workout{segment.workouts === 1 ? "" : "s"} • {formatNumber(segment.volume)} lb</em>
+            </div>
+            <strong>{segment.percentage}%</strong>
+            <div className="bar-track"><div style={{ width: `${Math.max(segment.percentage ? 6 : 0, segment.percentage)}%` }} /></div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function TrainingStylePanel({ insights }: { insights: MemberDetailInsights }) {
+  return (
+    <section className="panel training-style-panel" data-section="training-style-profile">
+      <div className="panel-heading"><h2>Training style</h2><span>Profile</span></div>
+      <div className="style-profile-card">
+        <span>Current read</span>
+        <strong>{insights.trainingStyle.label}</strong>
+        <p>Derived from strength trend, training calendar, workout mix, and recent workout detail.</p>
+        <div className="style-trait-row">
+          {insights.trainingStyle.traits.map((trait) => <em key={trait}>{trait}</em>)}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function BestRecentWorkoutPanel({ insights }: { insights: MemberDetailInsights }) {
+  const { bestVolumeWorkout, densityWorkout, standoutRecord } = insights.recentHighlights;
+
+  return (
+    <section className="panel best-recent-panel" data-section="best-recent-workout">
+      <div className="panel-heading"><h2>Best recent workout</h2><span>Standouts</span></div>
+      <div className="recent-highlight-grid">
+        {bestVolumeWorkout ? (
+          <WorkoutHighlightCard
+            label="Highest volume"
+            primary={bestVolumeWorkout.volume ? `${formatNumber(bestVolumeWorkout.volume)} lb` : "—"}
+            secondary={workoutMeta(bestVolumeWorkout)}
+            title={bestVolumeWorkout.title}
+          />
+        ) : null}
+        {densityWorkout ? (
+          <WorkoutHighlightCard
+            label="Most efficient"
+            primary={densityWorkout.density ? `${formatNumber(densityWorkout.density)} lb/min` : "—"}
+            secondary={workoutMeta(densityWorkout)}
+            title={densityWorkout.title}
+          />
+        ) : null}
+        {standoutRecord ? (
+          <WorkoutHighlightCard
+            label={standoutRecord.label}
+            primary={`${formatNumber(standoutRecord.value)} ${standoutRecord.unit}`}
+            secondary={recordContext(standoutRecord)}
+            title={standoutRecord.movementName ?? standoutRecord.workoutName ?? "Recent standout"}
+          />
+        ) : null}
+        {!bestVolumeWorkout && !densityWorkout && !standoutRecord ? <Empty text="Recent workout detail will surface standout sessions here." /> : null}
+      </div>
+    </section>
+  );
+}
+
+function WorkoutHighlightCard({ label, primary, secondary, title }: { label: string; primary: string; secondary: string; title: string }) {
+  return (
+    <article className="workout-highlight-card">
+      <span>{label}</span>
+      <h3>{title}</h3>
+      <strong>{primary}</strong>
+      <em>{secondary}</em>
+    </article>
+  );
+}
+
 function WorkoutDnaCard({
   activity,
   detail
@@ -500,6 +712,55 @@ function findBestSet(detail?: RecentWorkoutDetail): RecentSet | undefined {
 function maxSuggestedWeightChange(detail?: RecentWorkoutDetail): number | undefined {
   const suggestion = Math.max(0, ...((detail?.movementSets.flatMap((movement) => movement.sets ?? []) ?? []).map((set) => set.suggestedWeightChange ?? 0)));
   return suggestion || undefined;
+}
+
+function calendarHeatmapCells(days: MemberDetailInsights["calendar"]["days"]): MemberDetailInsights["calendar"]["days"] {
+  const byDate = new Map(days.map((day) => [day.date, day]));
+  const latest = days.at(-1)?.date ? calendarDate(days.at(-1)!.date) : undefined;
+  const end = latest ?? new Date();
+  const endUtc = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
+
+  return Array.from({ length: 91 }, (_, index) => {
+    const date = new Date(endUtc);
+    date.setUTCDate(endUtc.getUTCDate() - (90 - index));
+    const key = calendarDateKey(date);
+    return byDate.get(key) ?? { date: key, workouts: 0, volume: 0, reps: 0, duration: 0, intensity: 0 };
+  });
+}
+
+function calendarDate(value: string): Date | undefined {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return undefined;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function calendarDateKey(date: Date): string {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+}
+
+function dayStreakLabel(streak: number): string {
+  if (streak <= 0) return "No day streak";
+  if (streak === 1) return "1-day streak";
+  return `${formatNumber(streak)}-day streak`;
+}
+
+function recordContext(record: NonNullable<MemberDetailInsights["records"][keyof MemberDetailInsights["records"]]>): string {
+  const context = [
+    record.movementName,
+    record.workoutName && record.workoutName !== record.movementName ? `in ${record.workoutName}` : undefined,
+    record.date ? formatDate(record.date) : undefined
+  ].filter(Boolean);
+  return context.join(" • ") || "Recent workout detail";
+}
+
+function workoutMeta(workout: { date?: string; reps?: number; duration?: number }): string {
+  const details = [
+    workout.date ? formatDate(workout.date) : undefined,
+    workout.reps ? `${formatNumber(workout.reps)} reps` : undefined,
+    workout.duration ? formatDuration(workout.duration) : undefined
+  ].filter(Boolean);
+  return details.join(" • ") || "Recent workout";
 }
 
 function prettifyLabel(value?: string | null): string {

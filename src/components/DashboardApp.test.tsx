@@ -389,6 +389,157 @@ describe("DashboardApp", () => {
     expect(container.textContent).toContain("Tonal League");
     expectNoRaceMetaphor(container);
   });
+
+  it("renders member detail training calendar, records, favorites, balance, style, and recent highlights", async () => {
+    window.history.replaceState(null, "", "/#member-taylor");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          configured: true,
+          members: [
+            {
+              member: { id: "taylor", name: "Taylor" },
+              fetchedAt: "2026-05-04T12:00:00.000Z",
+              strength: { overall: 535, upper: 560, core: 510, lower: 525 },
+              strengthHistory: [
+                { activityTime: "2026-04-01T12:00:00Z", overall: 500 },
+                { activityTime: "2026-05-01T12:00:00Z", overall: 535 }
+              ],
+              readiness: {},
+              topReady: [],
+              allTime: { totalVolume: 14800, totalWorkouts: 3, totalReps: 262, totalDuration: 6300, firstWorkoutAt: "2026-05-01T10:00:00Z" },
+              weeklyVolume: [{ week: "2026-W18", workouts: 3, volume: 14800 }],
+              calendarDays: [
+                { date: "2026-05-01", workouts: 1, volume: 6200, reps: 82, duration: 1800, intensity: 4 },
+                { date: "2026-05-02", workouts: 1, volume: 3200, reps: 120, duration: 2400, intensity: 2 },
+                { date: "2026-05-03", workouts: 1, volume: 5400, reps: 60, duration: 2100, intensity: 3 }
+              ],
+              activities: [
+                {
+                  activityId: "upper-density",
+                  activityTime: "2026-05-01T10:00:00Z",
+                  activityType: "CustomWorkout",
+                  workoutPreview: { workoutTitle: "Upper Density", targetArea: "Upper Body", totalDuration: 1800, totalVolume: 6200 }
+                },
+                {
+                  activityId: "core-builder",
+                  activityTime: "2026-05-02T10:00:00Z",
+                  activityType: "CustomWorkout",
+                  workoutPreview: { workoutTitle: "Core Builder", targetArea: "Core", totalDuration: 2400, totalVolume: 3200 }
+                },
+                {
+                  activityId: "lower-strength",
+                  activityTime: "2026-05-03T10:00:00Z",
+                  activityType: "CustomWorkout",
+                  workoutPreview: { workoutTitle: "Lower Strength", targetArea: "Lower Body", totalDuration: 2100, totalVolume: 5400 }
+                }
+              ],
+              recentWorkoutDetails: [
+                {
+                  activityId: "upper-density",
+                  name: "Upper Density",
+                  targetArea: "Upper Body",
+                  duration: 1800,
+                  timeUnderTension: 600,
+                  totalReps: 82,
+                  totalSets: 8,
+                  totalVolume: 6200,
+                  movementSets: [
+                    {
+                      movementName: "Wide Grip Bench Press",
+                      totalVolume: 4000,
+                      sets: [
+                        { repCount: 5, weight: 80, oneRepMax: 95, maxConPower: 450, totalVolume: 400 },
+                        { repCount: 6, weight: 75, oneRepMax: 90, totalVolume: 450 }
+                      ]
+                    },
+                    { movementName: "Bent Over Row", totalVolume: 2200, sets: [{ repCount: 8, weight: 65, totalVolume: 520 }] }
+                  ]
+                },
+                {
+                  activityId: "core-builder",
+                  name: "Core Builder",
+                  targetArea: "Core",
+                  duration: 2400,
+                  timeUnderTension: 500,
+                  totalReps: 120,
+                  totalSets: 10,
+                  totalVolume: 3200,
+                  movementSets: [
+                    { movementName: "Pallof Press", totalVolume: 1800, sets: [{ repCount: 14, weight: 30, totalVolume: 420 }] },
+                    { movementName: "Dead Bug", totalVolume: 1400, sets: [{ repCount: 18, weight: 0, totalVolume: 0 }] }
+                  ]
+                },
+                {
+                  activityId: "lower-strength",
+                  name: "Lower Strength",
+                  targetArea: "Lower Body",
+                  duration: 2100,
+                  timeUnderTension: 900,
+                  totalReps: 60,
+                  totalSets: 6,
+                  totalVolume: 5400,
+                  movementSets: [
+                    { movementName: "Barbell Squat", totalVolume: 5400, sets: [{ repCount: 5, weight: 100, oneRepMax: 120, maxConPower: 390, totalVolume: 500 }] }
+                  ]
+                }
+              ],
+              errors: []
+            }
+          ]
+        })
+      })
+    );
+
+    await act(async () => {
+      root.render(<DashboardApp />);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    for (const section of [
+      "training-calendar",
+      "personal-records",
+      "favorite-movements",
+      "body-balance-analysis",
+      "training-style-profile",
+      "best-recent-workout"
+    ]) {
+      expect(container.querySelector(`[data-section="${section}"]`)).not.toBeNull();
+    }
+
+    expect(container.querySelector('[data-chart="training-calendar-heatmap"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Taylor training calendar heatmap"]')).not.toBeNull();
+    expect(container.textContent).toContain("Training calendar");
+    expect(container.textContent).toContain("3 active days");
+    expect(container.textContent).toContain("3-day streak");
+    expect(container.textContent).toContain("Personal records");
+    expect(container.textContent).toContain("Heaviest set");
+    expect(container.textContent).toContain("100 lb");
+    expect(container.textContent).toContain("Best estimated 1RM");
+    expect(container.textContent).toContain("120 lb");
+    expect(container.textContent).toContain("Most reps in one workout");
+    expect(container.textContent).toContain("120 reps");
+    expect(container.textContent).toContain("Peak power");
+    expect(container.textContent).toContain("450 W");
+    expect(container.textContent).toContain("Favorite movements");
+    expect(container.textContent).toContain("Barbell Squat");
+    expect(container.textContent).toContain("Body balance");
+    expect(container.textContent).toContain("Upper");
+    expect(container.textContent).toContain("42%");
+    expect(container.textContent).toContain("Training style");
+    expect(container.textContent).toContain("Strength-score climber");
+    expect(container.textContent).toContain("+35 strength score");
+    expect(container.textContent).toContain("Best recent workout");
+    expect(container.textContent).toContain("Upper Density");
+    expect(container.textContent).toContain("620 lb/min");
+    expectNoRaceMetaphor(container);
+  });
 });
 
 function expectNoRaceMetaphor(container: HTMLElement) {

@@ -150,6 +150,45 @@ em { color: var(--muted); font-style: normal; font-size: .55em; letter-spacing: 
 .metric-card { min-height: 138px; padding: 18px; }
 .metric-icon { display: grid; place-items: center; width: 34px; height: 34px; margin-bottom: 18px; border-radius: 10px; background: var(--accent-soft); color: #c8c7ff; }
 
+.member-insight-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.training-calendar-panel, .personal-records-panel { grid-column: 1 / -1; }
+.calendar-summary-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+.calendar-summary-stat { border: 1px solid var(--border-soft); border-radius: 15px; padding: 13px; background: rgba(255,255,255,.024); }
+.calendar-summary-stat span { display: block; color: var(--subtle); font-size: 10px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
+.calendar-summary-stat strong { display: block; margin-top: 7px; color: #eef1f5; font-size: 16px; font-weight: 590; letter-spacing: -0.02em; }
+.calendar-heatmap { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 12px); grid-auto-columns: 12px; gap: 5px; overflow-x: auto; border: 1px solid rgba(255,255,255,.06); border-radius: 18px; padding: 14px; background: radial-gradient(circle at 0% 0%, rgba(16,185,129,.11), transparent 36%), rgba(0,0,0,.16); }
+.calendar-cell { display: block; width: 12px; height: 12px; border-radius: 3px; background: rgba(255,255,255,.055); box-shadow: inset 0 0 0 1px rgba(255,255,255,.045); }
+.calendar-cell[data-intensity="1"], .calendar-legend i[data-intensity="1"] { background: rgba(16,185,129,.28); }
+.calendar-cell[data-intensity="2"], .calendar-legend i[data-intensity="2"] { background: rgba(16,185,129,.48); }
+.calendar-cell[data-intensity="3"], .calendar-legend i[data-intensity="3"] { background: rgba(16,185,129,.72); }
+.calendar-cell[data-intensity="4"], .calendar-legend i[data-intensity="4"] { background: #10b981; box-shadow: 0 0 16px rgba(16,185,129,.24), inset 0 0 0 1px rgba(255,255,255,.16); }
+.calendar-legend { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 10px; color: var(--subtle); font-size: 11px; }
+.calendar-legend i { width: 10px; height: 10px; border-radius: 3px; background: rgba(255,255,255,.055); }
+.record-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.record-card { min-height: 126px; border: 1px solid rgba(242,200,121,.13); border-radius: 17px; padding: 14px; background: radial-gradient(circle at 20% 0%, rgba(242,200,121,.11), transparent 44%), rgba(255,255,255,.024); }
+.record-card span, .style-profile-card span, .workout-highlight-card span { display: block; color: var(--subtle); font-size: 10px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
+.record-card strong { display: block; margin-top: 10px; color: var(--gold); font-size: 22px; font-weight: 560; letter-spacing: -0.04em; }
+.record-card em { display: block; margin-top: 8px; color: #c9ced8; font-size: 12px; line-height: 1.35; }
+.record-card-empty { border-style: dashed; background: rgba(255,255,255,.018); }
+.record-card-empty strong, .record-card-empty em { color: var(--subtle); }
+.style-profile-card { min-height: 256px; border: 1px solid rgba(113,112,255,.18); border-radius: 20px; padding: 18px; background: radial-gradient(circle at 20% 0%, rgba(113,112,255,.21), transparent 42%), rgba(0,0,0,.14); }
+.style-profile-card strong { display: block; margin-top: 12px; color: #eeeeff; font-size: clamp(28px, 4vw, 44px); font-weight: 510; line-height: .98; letter-spacing: -0.055em; }
+.style-profile-card p { margin: 14px 0 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.style-trait-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.style-trait-row em { border: 1px solid rgba(113,112,255,.22); border-radius: 999px; padding: 7px 9px; color: #d8d7ff; background: rgba(113,112,255,.09); font-size: 12px; }
+.recent-highlight-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.workout-highlight-card { min-height: 166px; border: 1px solid var(--border-soft); border-radius: 18px; padding: 14px; background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.018)); }
+.workout-highlight-card h3 { margin: 11px 0 0; font-size: 18px; font-weight: 590; line-height: 1.05; letter-spacing: -0.03em; }
+.workout-highlight-card strong { display: block; margin-top: 16px; color: #a7f3d0; font-size: 24px; font-weight: 560; letter-spacing: -0.04em; }
+.workout-highlight-card em { display: block; margin-top: 8px; color: var(--muted); font-size: 12px; line-height: 1.35; }
+.insight-bar-list, .body-balance-stack { display: grid; gap: 12px; }
+.insight-bar-row, .body-balance-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; align-items: center; }
+.insight-bar-row > div:first-child, .body-balance-row > div:first-child { min-width: 0; }
+.insight-bar-row span, .body-balance-row span { display: block; min-width: 0; overflow: hidden; color: #e4e8ee; font-size: 13px; font-weight: 590; text-overflow: ellipsis; white-space: nowrap; }
+.insight-bar-row em, .body-balance-row em { display: block; margin-top: 3px; color: var(--subtle); font-size: 11px; }
+.insight-bar-row strong, .body-balance-row strong { color: var(--text); font-size: 13px; font-weight: 590; }
+.insight-bar-row .bar-track, .body-balance-row .bar-track { grid-column: 1 / -1; }
+
 .category-tabs {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -341,10 +380,11 @@ em { color: var(--muted); font-style: normal; font-size: .55em; letter-spacing: 
 @keyframes shimmer { to { background-position: -240% 0; } }
 
 @media (max-width: 920px) {
-  .leaderboard-hero, .athlete-hero, .detail-grid, .trend-grid { grid-template-columns: 1fr; }
+  .leaderboard-hero, .athlete-hero, .detail-grid, .trend-grid, .member-insight-grid { grid-template-columns: 1fr; }
   .league-strip, .metric-grid { grid-template-columns: 1fr 1fr; }
   .category-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .strength-grid { grid-template-columns: 1fr 1fr; }
+  .record-grid, .recent-highlight-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .readiness-matrix { grid-template-columns: 1fr 1fr; }
   .body-readiness-layout { grid-template-columns: 1fr; }
   .readiness-sidecar { grid-template-columns: 1fr 1fr; }
@@ -357,7 +397,7 @@ em { color: var(--muted); font-style: normal; font-size: .55em; letter-spacing: 
   .updated-pill { justify-content: space-between; white-space: normal; }
   .hero-copy, .athlete-hero > div:first-child, .hero-stat-card, .athlete-volume-card, .loading-hero { min-height: auto; padding: 24px; border-radius: 22px; }
   h1 { font-size: 46px; }
-  .league-strip, .metric-grid, .strength-grid, .readiness-matrix, .category-tabs { grid-template-columns: 1fr; }
+  .league-strip, .metric-grid, .strength-grid, .readiness-matrix, .category-tabs, .record-grid, .recent-highlight-grid, .calendar-summary-row { grid-template-columns: 1fr; }
   .leaderboard-heading { align-items: flex-start; flex-direction: column; }
   .leaderboard-status-row { justify-content: flex-start; }
   .readiness-sidecar { grid-template-columns: 1fr; }

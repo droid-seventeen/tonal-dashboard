@@ -1,5 +1,5 @@
 import { TonalMember } from "./members";
-import { AllTimeStats, groupActivitiesByWeek, normalizeStrengthHistory, normalizeStrengthScores, summarizeAllTimeStats, topReadyMuscles } from "./metrics";
+import { AllTimeStats, groupActivitiesByWeek, normalizeStrengthHistory, normalizeStrengthScores, summarizeAllTimeStats, summarizeCalendarDays, topReadyMuscles } from "./metrics";
 
 const AUTH0_CLIENT_ID = "ERCyexW-xoVG_Yy3RDe-eV4xsOnRHP6L";
 const AUTH0_TOKEN_URL = "https://tonal.auth0.com/oauth/token";
@@ -25,6 +25,7 @@ export type TonalDashboard = {
   activities: TonalActivity[];
   recentWorkoutDetails: TonalWorkoutDetail[];
   weeklyVolume: ReturnType<typeof groupActivitiesByWeek>;
+  calendarDays: ReturnType<typeof summarizeCalendarDays>;
   errors: string[];
 };
 
@@ -138,6 +139,7 @@ export async function getFamilyDashboard(member: TonalMember): Promise<TonalDash
     : workoutActivitySummaries.slice(0, 20);
   const readiness = readinessRaw && !Array.isArray(readinessRaw) ? readinessRaw : {};
   const recentWorkoutDetails = await getRecentWorkoutDetails(client, userId, displayActivities, errors);
+  const calendarDays = summarizeCalendarDays(workoutActivities.length ? workoutActivities : displayActivities);
 
   return {
     member: { id: member.id, name: member.name },
@@ -150,6 +152,7 @@ export async function getFamilyDashboard(member: TonalMember): Promise<TonalDash
     activities: displayActivities,
     recentWorkoutDetails,
     weeklyVolume: groupActivitiesByWeek(workoutActivitySummaries.length ? workoutActivitySummaries : displayActivities),
+    calendarDays,
     errors
   };
 }
