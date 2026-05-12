@@ -21,14 +21,14 @@ Short version: `JeffOtano/roni` is the strongest full app, but it is an AI coach
 ## Local setup
 
 ```bash
-npm install
+corepack pnpm install --frozen-lockfile
 cp .env.example .env.local
 ```
 
 Generate a refresh token for each Tonal family member:
 
 ```bash
-npm run auth:token -- member@example.com
+corepack pnpm run auth:token -- member@example.com
 ```
 
 Put those refresh tokens into `.env.local`:
@@ -50,7 +50,7 @@ AVATAR_ADMIN_TOKEN="choose-a-private-upload-code"
 Then run locally:
 
 ```bash
-npm run dev
+corepack pnpm run dev
 ```
 
 With portless, the local URL is:
@@ -104,11 +104,11 @@ Enter the `AVATAR_ADMIN_TOKEN`, choose a configured Tonal member, and upload a j
 ## Commands
 
 ```bash
-npm run dev        # local dev through portless
-npm run build      # production build
-npm run typecheck  # TypeScript check
+corepack pnpm run dev        # local dev through portless
+corepack pnpm run build      # production build
+corepack pnpm run typecheck  # TypeScript check
 npm test           # Vitest unit tests
-npm run auth:token -- email  # securely prompt, then print Tonal refresh token
+corepack pnpm run auth:token -- email  # securely prompt, then print Tonal refresh token
 ```
 
 ## Current verification
